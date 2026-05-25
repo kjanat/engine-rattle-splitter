@@ -189,3 +189,4 @@ pyrightconfig.json
 .nfs*
 
 # End of https://gitignore.kjanat.com/api/python,linux
+*.wav
