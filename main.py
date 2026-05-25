@@ -1,15 +1,16 @@
 """CLI entry — wires together the engine_sound_splitter pipelines.
 
 Subcommands:
-  separate  decode → crossover filter → write engine.wav + rattles.wav
-  analyze   compute frame features and contrast before/after a time mark
+  separate     decode → crossover filter → write engine.wav + rattles.wav
+  analyze      compute frame features and contrast before/after a time mark
+  spectrogram  render a log-frequency dB spectrogram PNG
 """
 
 import argparse
 import sys
 from pathlib import Path
 
-from engine_sound_splitter import analysis, pipeline
+from engine_sound_splitter import analysis, pipeline, spectrogram
 
 DEFAULT_INPUT = Path("Shitty motor (goede recording).m4a")
 DEFAULT_OUTPUT_DIR = Path(".")
@@ -18,6 +19,7 @@ DEFAULT_CROSSOVER_HZ = 1800.0
 DEFAULT_CROSSOVER_ORDER = 4
 DEFAULT_SPLIT_AT = 13.0
 DEFAULT_ANALYSIS_PNG = Path("analysis.png")
+DEFAULT_SPECTROGRAM_PNG = Path("spectrogram.png")
 
 
 def cmd_separate(args: argparse.Namespace) -> int:
@@ -48,6 +50,18 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         input_path=args.input,
         sample_rate=args.sample_rate,
         split_at=args.split_at,
+        output_png=args.output,
+    )
+    return 0
+
+
+def cmd_spectrogram(args: argparse.Namespace) -> int:
+    if not args.input.exists():
+        print(f"missing: {args.input}", file=sys.stderr)
+        return 1
+    spectrogram.run(
+        input_path=args.input,
+        sample_rate=args.sample_rate,
         output_png=args.output,
     )
     return 0
@@ -92,6 +106,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     an.add_argument("-o", "--output", type=Path, default=DEFAULT_ANALYSIS_PNG)
     an.set_defaults(func=cmd_analyze)
+
+    sg = sub.add_parser("spectrogram", help="render a log-frequency dB spectrogram PNG")
+    sg.add_argument("input", type=Path, nargs="?", default=DEFAULT_INPUT)
+    sg.add_argument("-o", "--output", type=Path, default=DEFAULT_SPECTROGRAM_PNG)
+    sg.set_defaults(func=cmd_spectrogram)
 
     return parser
 
