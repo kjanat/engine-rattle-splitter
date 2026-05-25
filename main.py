@@ -8,12 +8,13 @@ Subcommands:
 
 import argparse
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from engine_sound_splitter import analysis, pipeline, spectrogram
 
 DEFAULT_INPUT = Path("Shitty motor (goede recording).m4a")
-DEFAULT_OUTPUT_DIR = Path(".")
+DEFAULT_OUTPUT_DIR = Path()
 DEFAULT_SAMPLE_RATE = 48_000
 DEFAULT_CROSSOVER_HZ = 1800.0
 DEFAULT_CROSSOVER_ORDER = 4
@@ -22,7 +23,26 @@ DEFAULT_ANALYSIS_PNG = Path("analysis.png")
 DEFAULT_SPECTROGRAM_PNG = Path("spectrogram.png")
 
 
-def cmd_separate(args: argparse.Namespace) -> int:
+def _no_op(_: "Args") -> int:
+    return 0
+
+
+class Args(argparse.Namespace):
+    """Typed view of parsed CLI args. Class-level defaults satisfy the
+    type checker; argparse overwrites them on parse_args()."""
+
+    cmd: str = ""
+    sample_rate: int = DEFAULT_SAMPLE_RATE
+    input: Path = DEFAULT_INPUT
+    output_dir: Path = DEFAULT_OUTPUT_DIR
+    crossover: float = DEFAULT_CROSSOVER_HZ
+    order: int = DEFAULT_CROSSOVER_ORDER
+    split_at: float = DEFAULT_SPLIT_AT
+    output: Path = DEFAULT_ANALYSIS_PNG
+    func: Callable[["Args"], int] = _no_op
+
+
+def cmd_separate(args: Args) -> int:
     if not args.input.exists():
         print(f"missing: {args.input}", file=sys.stderr)
         return 1
@@ -37,12 +57,16 @@ def cmd_separate(args: argparse.Namespace) -> int:
     print(f"duration      : {stats['duration_s']:.2f} s")
     print(f"crossover     : {args.crossover} Hz, Butterworth order {args.order}")
     print(f"input    RMS  : {stats['input_rms']:.4f}")
-    print(f"engine   RMS  : {stats['engine_rms']:.4f}  -> {stats['engine_path']}")
-    print(f"rattles  RMS  : {stats['rattles_rms']:.4f}  -> {stats['rattles_path']}")
+    print(
+        f"engine   RMS  : {stats['engine_rms']:.4f}  -> {stats['engine_wav']} / {stats['engine_mp3']}"
+    )
+    print(
+        f"rattles  RMS  : {stats['rattles_rms']:.4f}  -> {stats['rattles_wav']} / {stats['rattles_mp3']}"
+    )
     return 0
 
 
-def cmd_analyze(args: argparse.Namespace) -> int:
+def cmd_analyze(args: Args) -> int:
     if not args.input.exists():
         print(f"missing: {args.input}", file=sys.stderr)
         return 1
@@ -55,7 +79,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_spectrogram(args: argparse.Namespace) -> int:
+def cmd_spectrogram(args: Args) -> int:
     if not args.input.exists():
         print(f"missing: {args.input}", file=sys.stderr)
         return 1
@@ -69,7 +93,7 @@ def cmd_spectrogram(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="engine-sound-splitter")
-    parser.add_argument(
+    _ = parser.add_argument(
         "--sample-rate",
         type=int,
         default=DEFAULT_SAMPLE_RATE,
@@ -78,15 +102,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sep = sub.add_parser("separate", help="split into engine + rattles via crossover")
-    sep.add_argument("input", type=Path, nargs="?", default=DEFAULT_INPUT)
-    sep.add_argument("-o", "--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    sep.add_argument(
+    _ = sep.add_argument("input", type=Path, nargs="?", default=DEFAULT_INPUT)
+    _ = sep.add_argument("-o", "--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    _ = sep.add_argument(
         "--crossover",
         type=float,
         default=DEFAULT_CROSSOVER_HZ,
         help="crossover frequency in Hz (default: %(default)s)",
     )
-    sep.add_argument(
+    _ = sep.add_argument(
         "--order",
         type=int,
         default=DEFAULT_CROSSOVER_ORDER,
@@ -97,26 +121,26 @@ def build_parser() -> argparse.ArgumentParser:
     an = sub.add_parser(
         "analyze", help="contrast frame features before/after a time mark"
     )
-    an.add_argument("input", type=Path, nargs="?", default=DEFAULT_INPUT)
-    an.add_argument(
+    _ = an.add_argument("input", type=Path, nargs="?", default=DEFAULT_INPUT)
+    _ = an.add_argument(
         "--split-at",
         type=float,
         default=DEFAULT_SPLIT_AT,
         help="time in seconds dividing the two halves (default: %(default)s)",
     )
-    an.add_argument("-o", "--output", type=Path, default=DEFAULT_ANALYSIS_PNG)
+    _ = an.add_argument("-o", "--output", type=Path, default=DEFAULT_ANALYSIS_PNG)
     an.set_defaults(func=cmd_analyze)
 
     sg = sub.add_parser("spectrogram", help="render a log-frequency dB spectrogram PNG")
-    sg.add_argument("input", type=Path, nargs="?", default=DEFAULT_INPUT)
-    sg.add_argument("-o", "--output", type=Path, default=DEFAULT_SPECTROGRAM_PNG)
+    _ = sg.add_argument("input", type=Path, nargs="?", default=DEFAULT_INPUT)
+    _ = sg.add_argument("-o", "--output", type=Path, default=DEFAULT_SPECTROGRAM_PNG)
     sg.set_defaults(func=cmd_spectrogram)
 
     return parser
 
 
 def main() -> int:
-    args = build_parser().parse_args()
+    args = build_parser().parse_args(namespace=Args())
     return args.func(args)
 
 

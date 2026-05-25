@@ -6,9 +6,23 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = ["matplotlib>=3.10.9", "numpy>=2.4.6", "scipy>=1.17.1"]
 
+[dependency-groups]
+dev = [
+  "basedpyright>=1.39.6",
+  "ruff>=0.15.14",
+  "scipy-stubs>=1.17.1.5",
+  "ty>=0.0.39",
+  "uv>=0.11.16",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["engine_sound_splitter"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
