@@ -1,16 +1,9 @@
-name: deploy pages
+name: Site
 
 on:
   push:
     branches: [master]
-    paths:
-      - "index.html"
-      - "main.py"
-      - "engine_sound_splitter/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "*.m4a"
-      - ".github/workflows/pages.yml"
+    paths: [index.html, main.py, engine_sound_splitter/**, pyproject.toml, uv.lock, "*.m4a", .github/workflows/pages.yml]
   workflow_dispatch:
 
 permissions:
@@ -27,32 +20,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: install ffmpeg
-        uses: federicocarboni/setup-ffmpeg@37062fbf7149fc5578d6c57e08aed62458b375d6 # v3.1
-
+      - uses: federicocarboni/setup-ffmpeg@37062fbf7149fc5578d6c57e08aed62458b375d6 # v3.1
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
+        with: { enable-cache: true, cache-dependency-glob: uv.lock }
 
-      - name: sync deps
-        run: uv sync --frozen
-
-      - name: build site
-        run: uv run python main.py site -o dist/site
+      - run: uv sync --frozen
+      - run: uv run python main.py site -o dist/site
 
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with:
-          path: dist/site
+        with: { path: dist/site }
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+    environment: { name: github-pages, url: "${{ steps.deployment.outputs.page_url }}" }
+    steps: [{ id: deployment, uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 }] # v5.0.0
