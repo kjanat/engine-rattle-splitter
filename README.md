@@ -46,27 +46,23 @@ bundled file and likely need adjusting for other recordings:
   Meaningless if your recording has no such transition; pass the actual
   boundary in your file, or skip `analyze` entirely.
 
-## Spectrogram
+## Listen / look
 
-![spectrogram](spectrogram.png)
+Stems and plots are regenerated from the bundled m4a on every CI run
+and hosted at <https://kjanat.github.io/engine-sound-splitter/>. The
+spectrogram, analysis plots, and playable mp3 stems live there — they
+are not committed to this repo (CI is the source of truth).
 
-## Analysis
+![spectrogram](https://kjanat.github.io/engine-sound-splitter/spectrogram.png)
 
-Frame features and per-octave-band energy contrast across the 13s mark
-of the bundled recording — quantifies what "rattling" looks like
+Frame features and per-octave-band energy contrast across the 13 s
+mark of the bundled recording — quantifies what "rattling" looks like
 statistically (spectral flux +57%, energy doubles above 2 kHz).
 
-![analysis](analysis.png)
+![analysis](https://kjanat.github.io/engine-sound-splitter/analysis.png)
 
-Same analysis run on `rattles.wav` validates the split — rattle energy
-is 2× louder before 13s, with no engine-band content leaking through.
+Same analysis run on the rattles stem validates the split — rattle
+energy is 2× louder before 13 s, with no engine-band content leaking
+through.
 
-![rattles analysis](rattles_analysis.png)
-
-## Audio
-
-- [engine.mp3](engine.mp3)
-- [rattles.mp3](rattles.mp3)
-
-Both mp3s are re-encoded automatically every time `separate` runs, so
-they always reflect the current crossover output.
+![rattles analysis](https://kjanat.github.io/engine-sound-splitter/rattles_analysis.png)

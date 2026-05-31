@@ -5,9 +5,11 @@ on:
     branches: [master]
     paths:
       - "index.html"
-      - "*.mp3"
+      - "main.py"
+      - "engine_sound_splitter/**"
+      - "pyproject.toml"
+      - "uv.lock"
       - "*.m4a"
-      - "*.png"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -21,24 +23,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: sync deps
+        run: uv sync --frozen
+
+      - name: regenerate stems + plots
+        run: |
+          mkdir -p _site
+          uv run python main.py separate     -o _site
+          uv run python main.py spectrogram  -o _site/spectrogram.png
+          uv run python main.py analyze      -o _site/analysis.png
+          uv run python main.py analyze _site/rattles.wav -o _site/rattles_analysis.png
+          cp index.html _site/
+          cp "Shitty motor (goede recording).m4a" _site/
+          rm -f _site/engine.wav _site/rattles.wav
+
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: stage site
-        run: |
-          mkdir -p _site
-          cp index.html _site/
-          cp *.mp3 *.m4a *.png _site/
-
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
