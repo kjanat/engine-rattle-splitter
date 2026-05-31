@@ -139,6 +139,9 @@ def cmd_site(args: Args) -> int:
 
     _ = shutil.copy(args.index_html, out / args.index_html.name)
     _ = shutil.copy(args.input, out / args.input.name)
+    favicon = args.index_html.with_name("favicon.svg")
+    if favicon.exists():
+        _ = shutil.copy(favicon, out / favicon.name)
     (out / "engine.wav").unlink(missing_ok=True)
     (out / "rattles.wav").unlink(missing_ok=True)
 
