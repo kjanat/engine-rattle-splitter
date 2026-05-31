@@ -7,6 +7,7 @@ Subcommands:
 """
 
 import argparse
+import shutil
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -21,6 +22,8 @@ DEFAULT_CROSSOVER_ORDER = 4
 DEFAULT_SPLIT_AT = 13.0
 DEFAULT_ANALYSIS_PNG = Path("analysis.png")
 DEFAULT_SPECTROGRAM_PNG = Path("spectrogram.png")
+DEFAULT_SITE_DIR = Path("dist/site")
+DEFAULT_INDEX_HTML = Path("index.html")
 
 
 def _no_op(_: "Args") -> int:
@@ -39,6 +42,7 @@ class Args(argparse.Namespace):
     order: int = DEFAULT_CROSSOVER_ORDER
     split_at: float = DEFAULT_SPLIT_AT
     output: Path = DEFAULT_ANALYSIS_PNG
+    index_html: Path = DEFAULT_INDEX_HTML
     func: Callable[["Args"], int] = _no_op
 
 
@@ -88,6 +92,57 @@ def cmd_spectrogram(args: Args) -> int:
         sample_rate=args.sample_rate,
         output_png=args.output,
     )
+    return 0
+
+
+def cmd_site(args: Args) -> int:
+    """Build the full static site under args.output_dir in one process.
+
+    One Python invocation instead of four — skips ~3 cold-start +
+    numpy/scipy/matplotlib imports per command (the actual win) and
+    keeps every output in the same dir for the Pages workflow to upload.
+    """
+    if not args.input.exists():
+        print(f"missing: {args.input}", file=sys.stderr)
+        return 1
+    if not args.index_html.exists():
+        print(f"missing: {args.index_html}", file=sys.stderr)
+        return 1
+
+    out = args.output_dir
+    out.mkdir(parents=True, exist_ok=True)
+
+    pipeline.split(
+        input_path=args.input,
+        output_dir=out,
+        sample_rate=args.sample_rate,
+        crossover_hz=args.crossover,
+        order=args.order,
+    )
+    spectrogram.run(
+        input_path=args.input,
+        sample_rate=args.sample_rate,
+        output_png=out / "spectrogram.png",
+    )
+    analysis.run(
+        input_path=args.input,
+        sample_rate=args.sample_rate,
+        split_at=args.split_at,
+        output_png=out / "analysis.png",
+    )
+    analysis.run(
+        input_path=out / "rattles.wav",
+        sample_rate=args.sample_rate,
+        split_at=args.split_at,
+        output_png=out / "rattles_analysis.png",
+    )
+
+    _ = shutil.copy(args.index_html, out / args.index_html.name)
+    _ = shutil.copy(args.input, out / args.input.name)
+    (out / "engine.wav").unlink(missing_ok=True)
+    (out / "rattles.wav").unlink(missing_ok=True)
+
+    print(f"site -> {out}")
     return 0
 
 
@@ -229,6 +284,58 @@ def build_parser() -> argparse.ArgumentParser:
         help="PNG output path (default: %(default)s)",
     )
     sg.set_defaults(func=cmd_spectrogram)
+
+    st = sub.add_parser(
+        "site",
+        help="build the full GitHub Pages site (stems + plots + html) into a dir",
+        description=(
+            "Run separate + spectrogram + analyze + analyze-on-rattles in a "
+            "single Python process and assemble a self-contained static site "
+            "in --output-dir, ready for actions/upload-pages-artifact. One "
+            "process instead of four kills the cold-start / numpy / matplotlib "
+            "import overhead — this is the CI build step."
+        ),
+    )
+    _ = st.add_argument(
+        "input", type=Path, nargs="?", default=DEFAULT_INPUT, help=INPUT_HELP
+    )
+    _ = st.add_argument(
+        "-o",
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_SITE_DIR,
+        metavar="DIR",
+        help="site output directory (default: %(default)s)",
+    )
+    _ = st.add_argument(
+        "--index-html",
+        type=Path,
+        default=DEFAULT_INDEX_HTML,
+        metavar="HTML",
+        help="path to the index.html shell to copy in (default: %(default)s)",
+    )
+    _ = st.add_argument(
+        "--crossover",
+        type=float,
+        default=DEFAULT_CROSSOVER_HZ,
+        metavar="HZ",
+        help="crossover frequency in Hz (default: %(default)s)",
+    )
+    _ = st.add_argument(
+        "--order",
+        type=int,
+        default=DEFAULT_CROSSOVER_ORDER,
+        metavar="N",
+        help="Butterworth filter order (default: %(default)s)",
+    )
+    _ = st.add_argument(
+        "--split-at",
+        type=float,
+        default=DEFAULT_SPLIT_AT,
+        metavar="SECONDS",
+        help="time in seconds for analyze split (default: %(default)s)",
+    )
+    st.set_defaults(func=cmd_site)
 
     return parser
 

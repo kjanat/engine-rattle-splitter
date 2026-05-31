@@ -39,21 +39,13 @@ jobs:
       - name: sync deps
         run: uv sync --frozen
 
-      - name: regenerate stems + plots
-        run: |
-          mkdir -p _site
-          uv run python main.py separate     -o _site
-          uv run python main.py spectrogram  -o _site/spectrogram.png
-          uv run python main.py analyze      -o _site/analysis.png
-          uv run python main.py analyze _site/rattles.wav -o _site/rattles_analysis.png
-          cp index.html _site/
-          cp "Shitty motor (goede recording).m4a" _site/
-          rm -f _site/engine.wav _site/rattles.wav
+      - name: build site
+        run: uv run python main.py site -o dist/site
 
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: _site
+          path: dist/site
 
   deploy:
     needs: build
