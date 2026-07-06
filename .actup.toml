@@ -1,0 +1,12 @@
+#:schema .config/actup.schema.json
+
+update_policy    = "latest"
+ref_style        = "sha"
+branch_policy    = "update"
+allow_prerelease = true
+ignore           = []
+extra_paths      = []
+
+[fetch]
+api_mode          = "graphql"
+max_tags_per_repo = 100
