@@ -75,54 +75,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 {sections}
 {footer}
     </main>
-{script}
   </body>
 </html>
 """
-
-LIGHTBOX_SCRIPT = """    <script>
-      (() => {
-        const openLightbox = (id) => {
-          const lightbox = document.getElementById(id);
-          if (!(lightbox instanceof HTMLElement)) return;
-          lightbox.classList.add("is-open");
-          document.body.classList.add("has-lightbox");
-        };
-
-        const closeLightboxes = () => {
-          for (const lightbox of document.querySelectorAll(".lightbox.is-open")) {
-            lightbox.classList.remove("is-open");
-          }
-          document.body.classList.remove("has-lightbox");
-        };
-
-        for (const link of document.querySelectorAll(".image-link")) {
-          link.addEventListener("click", (event) => {
-            const target = event.currentTarget;
-            if (!(target instanceof HTMLAnchorElement)) return;
-            const id = target.hash.slice(1);
-            if (!id) return;
-            event.preventDefault();
-            openLightbox(id);
-          });
-        }
-
-        for (const close of document.querySelectorAll(".lightbox-close, .lightbox-backdrop")) {
-          close.addEventListener("click", (event) => {
-            event.preventDefault();
-            closeLightboxes();
-          });
-        }
-
-        document.addEventListener("keydown", (event) => {
-          if (event.key === "Escape") closeLightboxes();
-        });
-
-        if (location.hash.startsWith("#image-")) {
-          openLightbox(location.hash.slice(1));
-        }
-      })();
-    </script>"""
 
 
 def build(
@@ -266,7 +221,6 @@ def _render_html(
         stylesheet=_asset_url(stylesheet),
         sections=_render_sections(artifacts),
         footer=_render_footer(metadata.source_url),
-        script=LIGHTBOX_SCRIPT,
     )
 
 
@@ -280,7 +234,11 @@ def _render_footer(source_url: str | None) -> str:
     if source_url is None:
         return ""
     repository = source_url.removeprefix("https://github.com/")
-    return f"\n      <footer>Generated from {_e(repository)}.</footer>"
+    return (
+        "\n      <footer>Generated from "
+        f'<a href="{_e(source_url)}">{_e(repository)}</a>.'
+        "</footer>"
+    )
 
 
 def _render_favicon_link(favicon: Path | None) -> str:
@@ -423,20 +381,24 @@ def _render_image_section(artifacts: list[Artifact]) -> str:
 
     spectrogram = _artifact_named(ordered, "spectrogram.png")
     if spectrogram is not None:
-        rendered.extend([
-            "\n      <h2>Spectrogram</h2>",
-            '      <p class="section-copy">log-frequency dB spectrogram of the original recording</p>',
-            _render_figure(spectrogram, "spectrogram of the original recording"),
-        ])
+        rendered.extend(
+            [
+                "\n      <h2>Spectrogram</h2>",
+                '      <p class="section-copy">log-frequency dB spectrogram of the original recording</p>',
+                _render_figure(spectrogram, "spectrogram of the original recording"),
+            ]
+        )
 
     analysis = [
         artifact for artifact in ordered if artifact.path.name != "spectrogram.png"
     ]
     if analysis:
-        rendered.extend([
-            "\n      <h2>Analysis</h2>",
-            '      <p class="section-copy">Frame features and per-octave-band energy contrast across the 13 s mark.</p>',
-        ])
+        rendered.extend(
+            [
+                "\n      <h2>Analysis</h2>",
+                '      <p class="section-copy">Frame features and per-octave-band energy contrast across the 13 s mark.</p>',
+            ]
+        )
 
     for artifact in analysis:
         _, _, caption = _image_copy(artifact)
@@ -454,15 +416,16 @@ def _render_figure(artifact: Artifact, caption: str, *, indent: str = "      ") 
     asset_url = _asset_url(artifact.path)
     lightbox_id = _element_id("image", artifact.path)
     return (
+        f'{indent}<input class="lightbox-toggle" id="{lightbox_id}" type="checkbox" aria-hidden="true">\n'
         f"{indent}<figure>\n"
-        f'{indent}  <a class="image-link" href="#{lightbox_id}" aria-label="Open {_e(caption)} large">\n'
+        f'{indent}  <label class="image-link" for="{lightbox_id}" aria-label="Open {_e(caption)} large">\n'
         f'{indent}    <img src="{asset_url}" alt="{_e(caption)}">\n'
-        f"{indent}  </a>\n"
+        f"{indent}  </label>\n"
         f'{indent}  <figcaption>{_e(caption)} <span class="src">{_e(label)}</span></figcaption>\n'
         f"{indent}</figure>\n"
-        f'{indent}<div class="lightbox" id="{lightbox_id}" role="dialog" aria-modal="true" aria-label="{_e(caption)}">\n'
-        f'{indent}  <a class="lightbox-backdrop" href="#" aria-label="Close image"></a>\n'
-        f'{indent}  <a class="lightbox-close" href="#" aria-label="Close image">Close</a>\n'
+        f'{indent}<div class="lightbox" role="dialog" aria-modal="true" aria-label="{_e(caption)}">\n'
+        f'{indent}  <label class="lightbox-backdrop" for="{lightbox_id}" aria-label="Close image"></label>\n'
+        f'{indent}  <label class="lightbox-close" for="{lightbox_id}" aria-label="Close image">Close</label>\n'
         f'{indent}  <img src="{asset_url}" alt="{_e(caption)}">\n'
         f"{indent}</div>"
     )
