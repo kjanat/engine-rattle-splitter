@@ -191,10 +191,6 @@ pyrightconfig.json
 # End of https://gitignore.kjanat.com/api/python,linux
 # generated app artifacts
 /artifacts/
-/engine.wav
-/rattles.wav
-/engine.mp3
-/rattles.mp3
-/spectrogram.png
-/analysis.png
-/rattles_analysis.png
+/*.wav
+/*.mp3
+/*.png
