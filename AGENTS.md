@@ -11,22 +11,21 @@ reusable code is under `src/engine_rattle_splitter/`:
 - `pipeline.py`: high-level split orchestration.
 - `analysis.py` and `spectrogram.py`: diagnostic plot generation.
 
-Static site assets are rooted at `index.html` and `favicon.svg`; CI builds
-deployable output into `dist/site`. Generated stems and plots such as
-`engine.wav`, `rattles.mp3`, `spectrogram.png`, and `analysis.png` are build
-outputs and should not be treated as source.
+Committed source recordings live in `recordings/`. Static site source files live
+in `web/`. Generated stems, plots, and deployable site output go under
+`artifacts/` and should not be treated as source.
 
 ## Build, Test, and Development Commands
 
 - `uv sync --frozen`: install the locked Python 3.14 environment.
-- `uv run engine-rattle-splitter separate [INPUT] -o stems`: split an audio file
-  into engine and rattle stems.
-- `uv run engine-rattle-splitter analyze [INPUT] --split-at 13.0`: compare features
-  before and after a transition.
-- `uv run engine-rattle-splitter spectrogram [INPUT] -o spectrogram.png`: render
-  a diagnostic spectrogram.
-- `uv run engine-rattle-splitter site -o dist/site`: reproduce the GitHub Pages
-  build locally.
+- `uv run engine-rattle-splitter separate [INPUT] -o artifacts/stems`: split an
+  audio file into engine and rattle stems.
+- `uv run engine-rattle-splitter analyze [INPUT] --split-at 13.0`: compare
+  features before and after a transition.
+- `uv run engine-rattle-splitter spectrogram [INPUT] -o artifacts/spectrogram.png`:
+  render a diagnostic spectrogram.
+- `uv run engine-rattle-splitter site`: reproduce the GitHub Pages build under
+  `artifacts/site`.
 - `uv run ruff check .`: run lint checks.
 - `uv run basedpyright`: run static type checking.
 - `uv build`: build the package artifacts.

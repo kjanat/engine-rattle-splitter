@@ -14,16 +14,16 @@ from pathlib import Path
 
 from engine_rattle_splitter import analysis, pipeline, spectrogram
 
-DEFAULT_INPUT = Path("Shitty motor (goede recording).m4a")
-DEFAULT_OUTPUT_DIR = Path()
+DEFAULT_INPUT = Path("recordings/Shitty motor (goede recording).m4a")
+DEFAULT_OUTPUT_DIR = Path("artifacts/stems")
 DEFAULT_SAMPLE_RATE = 48_000
 DEFAULT_CROSSOVER_HZ = 1800.0
 DEFAULT_CROSSOVER_ORDER = 4
 DEFAULT_SPLIT_AT = 13.0
-DEFAULT_ANALYSIS_PNG = Path("analysis.png")
-DEFAULT_SPECTROGRAM_PNG = Path("spectrogram.png")
-DEFAULT_SITE_DIR = Path("dist/site")
-DEFAULT_INDEX_HTML = Path("index.html")
+DEFAULT_ANALYSIS_PNG = Path("artifacts/analysis.png")
+DEFAULT_SPECTROGRAM_PNG = Path("artifacts/spectrogram.png")
+DEFAULT_SITE_DIR = Path("artifacts/site")
+DEFAULT_INDEX_HTML = Path("web/index.html")
 
 
 class Args(argparse.Namespace):
@@ -162,9 +162,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         epilog=(
             "Examples:\n"
-            "  engine-rattle-splitter separate ride.flac -o ./stems --crossover 2000\n"
-            "  engine-rattle-splitter analyze  ride.flac --split-at 5.2\n"
-            "  engine-rattle-splitter spectrogram ride.flac -o ride.png"
+            "  engine-rattle-splitter separate recordings/ride.flac -o artifacts/stems --crossover 2000\n"
+            "  engine-rattle-splitter analyze  recordings/ride.flac --split-at 5.2\n"
+            "  engine-rattle-splitter spectrogram recordings/ride.flac"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -200,7 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="DIR",
         help=(
             "directory to write engine.{wav,mp3} + rattles.{wav,mp3} "
-            "(default: current directory)"
+            "(default: %(default)s)"
         ),
     )
     _ = sep.add_argument(

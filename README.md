@@ -8,7 +8,7 @@ a complementary Butterworth crossover. Reconstruction is bit-exact:
 Works on **any audio file ffmpeg can decode** — wav, mp3, m4a, flac,
 ogg, opus, mp4 audio tracks, etc. The included
 `Shitty motor (goede recording).m4a` is just the example used to tune
-the defaults.
+the defaults and lives under `recordings/`.
 
 ## Usage
 
@@ -22,9 +22,9 @@ Run any subcommand with `--help` for full option descriptions.
 
 ```bash
 # any input format works
-uv run engine-rattle-splitter separate ride.flac -o ./stems --crossover 2000
-uv run engine-rattle-splitter analyze  recording.mp3 --split-at 5.2
-uv run engine-rattle-splitter spectrogram ~/audio/clip.opus -o clip.png
+uv run engine-rattle-splitter separate recordings/ride.flac -o artifacts/stems --crossover 2000
+uv run engine-rattle-splitter analyze  recordings/ride.mp3 --split-at 5.2
+uv run engine-rattle-splitter spectrogram ~/audio/clip.opus
 
 # no INPUT → falls back to the bundled recording
 uv run engine-rattle-splitter separate
