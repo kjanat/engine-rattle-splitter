@@ -1,0 +1,77 @@
+{
+	"title": "engine-rattle-splitter",
+	"lede": "Splits a recording into low-band (combustion drone) and high-band (mechanical rattles) stems via complementary Butterworth crossover.",
+	"source": {
+		"label": "source on GitHub",
+		"url": "https://github.com/kjanat/engine-rattle-splitter"
+	},
+	"repo": {
+		"label": "kjanat/engine-rattle-splitter",
+		"url": "https://github.com/kjanat/engine-rattle-splitter"
+	},
+	"footer": {
+		"prefix": "Generated from"
+	},
+	"sections": [
+		{
+			"kind": "audio",
+			"heading": "Audio",
+			"items": [
+				{
+					"asset": "original",
+					"title": "Original recording",
+					"label": "{input_ext}",
+					"description": "Untouched input - motorcycle engine with intermittent rattles.",
+					"alt": ""
+				},
+				{
+					"asset": "engine",
+					"title": "Engine stem",
+					"label": "mp3 - low band, < {crossover_hz} Hz",
+					"description": "Combustion drone, idle fundamentals, low-mid body.",
+					"alt": ""
+				},
+				{
+					"asset": "rattles",
+					"title": "Rattles stem",
+					"label": "mp3 - high band, > {crossover_hz} Hz",
+					"description": "Mechanical rattles, knocks, dangling-part chatter.",
+					"alt": ""
+				}
+			]
+		},
+		{
+			"kind": "image",
+			"heading": "Spectrogram",
+			"items": [
+				{
+					"asset": "spectrogram",
+					"title": "",
+					"label": "",
+					"description": "",
+					"alt": "log-frequency dB spectrogram of the original recording"
+				}
+			]
+		},
+		{
+			"kind": "image",
+			"heading": "Analysis",
+			"items": [
+				{
+					"asset": "analysis",
+					"title": "",
+					"label": "",
+					"description": "Frame features and per-octave-band energy contrast across the {split_at} s mark.",
+					"alt": "analysis plot of the original recording"
+				},
+				{
+					"asset": "rattles_analysis",
+					"title": "",
+					"label": "",
+					"description": "Same analysis applied to the rattles stem validates the split.",
+					"alt": "analysis plot of the rattles stem"
+				}
+			]
+		}
+	]
+}

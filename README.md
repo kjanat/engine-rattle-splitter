@@ -50,8 +50,9 @@ bundled file and likely need adjusting for other recordings:
 
 Stems and plots are regenerated from the bundled m4a on every CI run
 and hosted at <https://kjanat.github.io/engine-rattle-splitter/>. The
-spectrogram, analysis plots, and playable mp3 stems live there — they
-are not committed to this repo (CI is the source of truth).
+spectrogram, analysis plots, and playable mp3 stems live there. The page is
+rendered from `web/site.json` + `web/site.css`; generated outputs are not
+committed to this repo.
 
 ![spectrogram](https://kjanat.github.io/engine-rattle-splitter/spectrogram.png)
 

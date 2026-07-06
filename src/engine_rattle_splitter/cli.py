@@ -12,7 +12,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from engine_rattle_splitter import analysis, pipeline, spectrogram
+from engine_rattle_splitter import analysis, pipeline, site_builder, spectrogram
 
 DEFAULT_INPUT = Path("recordings/Shitty motor (goede recording).m4a")
 DEFAULT_OUTPUT_DIR = Path("artifacts/stems")
@@ -23,7 +23,9 @@ DEFAULT_SPLIT_AT = 13.0
 DEFAULT_ANALYSIS_PNG = Path("artifacts/analysis.png")
 DEFAULT_SPECTROGRAM_PNG = Path("artifacts/spectrogram.png")
 DEFAULT_SITE_DIR = Path("artifacts/site")
-DEFAULT_INDEX_HTML = Path("web/index.html")
+DEFAULT_SITE_CONFIG = Path("web/site.json")
+DEFAULT_STYLESHEET = Path("web/site.css")
+DEFAULT_FAVICON = Path("web/favicon.svg")
 
 
 class Args(argparse.Namespace):
@@ -38,7 +40,9 @@ class Args(argparse.Namespace):
     order: int = DEFAULT_CROSSOVER_ORDER
     split_at: float = DEFAULT_SPLIT_AT
     output: Path = DEFAULT_ANALYSIS_PNG
-    index_html: Path = DEFAULT_INDEX_HTML
+    site_config: Path = DEFAULT_SITE_CONFIG
+    stylesheet: Path = DEFAULT_STYLESHEET
+    favicon: Path = DEFAULT_FAVICON
     func: Callable[..., int]
 
 
@@ -101,14 +105,20 @@ def cmd_site(args: Args) -> int:
     if not args.input.exists():
         print(f"missing: {args.input}", file=sys.stderr)
         return 1
-    if not args.index_html.exists():
-        print(f"missing: {args.index_html}", file=sys.stderr)
+    if not args.site_config.exists():
+        print(f"missing: {args.site_config}", file=sys.stderr)
+        return 1
+    if not args.stylesheet.exists():
+        print(f"missing: {args.stylesheet}", file=sys.stderr)
+        return 1
+    if not args.favicon.exists():
+        print(f"missing: {args.favicon}", file=sys.stderr)
         return 1
 
     out = args.output_dir
     out.mkdir(parents=True, exist_ok=True)
 
-    pipeline.split(
+    stats = pipeline.split(
         input_path=args.input,
         output_dir=out,
         sample_rate=args.sample_rate,
@@ -133,11 +143,27 @@ def cmd_site(args: Args) -> int:
         output_png=out / "rattles_analysis.png",
     )
 
-    _ = shutil.copy(args.index_html, out / args.index_html.name)
-    _ = shutil.copy(args.input, out / args.input.name)
-    favicon = args.index_html.with_name("favicon.svg")
-    if favicon.exists():
-        _ = shutil.copy(favicon, out / favicon.name)
+    input_asset = out / args.input.name
+    _ = shutil.copy(args.input, input_asset)
+    site_builder.build(
+        config_path=args.site_config,
+        stylesheet_path=args.stylesheet,
+        favicon_path=args.favicon,
+        output_dir=out,
+        assets={
+            "original": input_asset,
+            "engine": stats["engine_mp3"],
+            "rattles": stats["rattles_mp3"],
+            "spectrogram": out / "spectrogram.png",
+            "analysis": out / "analysis.png",
+            "rattles_analysis": out / "rattles_analysis.png",
+        },
+        values={
+            "input_ext": args.input.suffix.lstrip("."),
+            "crossover_hz": f"{args.crossover:g}",
+            "split_at": f"{args.split_at:g}",
+        },
+    )
     (out / "engine.wav").unlink(missing_ok=True)
     (out / "rattles.wav").unlink(missing_ok=True)
 
@@ -306,11 +332,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="site output directory (default: %(default)s)",
     )
     _ = st.add_argument(
-        "--index-html",
+        "--site-config",
         type=Path,
-        default=DEFAULT_INDEX_HTML,
-        metavar="HTML",
-        help="path to the index.html shell to copy in (default: %(default)s)",
+        default=DEFAULT_SITE_CONFIG,
+        metavar="JSON",
+        help="path to site content config (default: %(default)s)",
+    )
+    _ = st.add_argument(
+        "--stylesheet",
+        type=Path,
+        default=DEFAULT_STYLESHEET,
+        metavar="CSS",
+        help="path to site stylesheet (default: %(default)s)",
+    )
+    _ = st.add_argument(
+        "--favicon",
+        type=Path,
+        default=DEFAULT_FAVICON,
+        metavar="SVG",
+        help="path to site favicon (default: %(default)s)",
     )
     _ = st.add_argument(
         "--crossover",
