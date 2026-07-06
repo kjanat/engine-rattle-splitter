@@ -27,6 +27,17 @@ AUDIO_EXTENSIONS = {
 }
 IMAGE_EXTENSIONS = {".avif", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
 DEFAULT_PYPROJECT = Path("pyproject.toml")
+SITE_LEDE = (
+    "Splits a recording into low-band (combustion drone) and high-band "
+    "(mechanical rattles) stems via complementary Butterworth crossover."
+)
+AUDIO_ORDER = (
+    "Shitty motor (goede recording).m4a",
+    "engine.mp3",
+    "rattles.mp3",
+)
+IMAGE_ORDER = ("spectrogram.png", "analysis.png", "rattles_analysis.png")
+RECORDING_SPECTROGRAM_PREFIX = "recording_spectrogram_"
 
 
 @dataclass(frozen=True)
@@ -62,10 +73,56 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         {source_link}
       </header>
 {sections}
+{footer}
     </main>
+{script}
   </body>
 </html>
 """
+
+LIGHTBOX_SCRIPT = """    <script>
+      (() => {
+        const openLightbox = (id) => {
+          const lightbox = document.getElementById(id);
+          if (!(lightbox instanceof HTMLElement)) return;
+          lightbox.classList.add("is-open");
+          document.body.classList.add("has-lightbox");
+        };
+
+        const closeLightboxes = () => {
+          for (const lightbox of document.querySelectorAll(".lightbox.is-open")) {
+            lightbox.classList.remove("is-open");
+          }
+          document.body.classList.remove("has-lightbox");
+        };
+
+        for (const link of document.querySelectorAll(".image-link")) {
+          link.addEventListener("click", (event) => {
+            const target = event.currentTarget;
+            if (!(target instanceof HTMLAnchorElement)) return;
+            const id = target.hash.slice(1);
+            if (!id) return;
+            event.preventDefault();
+            openLightbox(id);
+          });
+        }
+
+        for (const close of document.querySelectorAll(".lightbox-close, .lightbox-backdrop")) {
+          close.addEventListener("click", (event) => {
+            event.preventDefault();
+            closeLightboxes();
+          });
+        }
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") closeLightboxes();
+        });
+
+        if (location.hash.startsWith("#image-")) {
+          openLightbox(location.hash.slice(1));
+        }
+      })();
+    </script>"""
 
 
 def build(
@@ -190,8 +247,7 @@ def _normalize_git_url(value: str) -> str | None:
         return None
     if value.startswith("git@github.com:"):
         value = f"https://github.com/{value.removeprefix('git@github.com:')}"
-    if value.endswith(".git"):
-        value = value[:-4]
+    value = value.removesuffix(".git")
     return value
 
 
@@ -204,18 +260,27 @@ def _render_html(
 ) -> str:
     return HTML_TEMPLATE.format(
         title=_e(metadata.title),
-        lede=_e(metadata.description),
+        lede=_e(SITE_LEDE),
         source_link=_render_source_link(metadata.source_url),
         favicon_link=_render_favicon_link(favicon),
         stylesheet=_asset_url(stylesheet),
         sections=_render_sections(artifacts),
+        footer=_render_footer(metadata.source_url),
+        script=LIGHTBOX_SCRIPT,
     )
 
 
 def _render_source_link(source_url: str | None) -> str:
     if source_url is None:
         return ""
-    return f'<a class="source-link" href="{_e(source_url)}">Source</a>'
+    return f'<a class="source-link" href="{_e(source_url)}">Source on GitHub</a>'
+
+
+def _render_footer(source_url: str | None) -> str:
+    if source_url is None:
+        return ""
+    repository = source_url.removeprefix("https://github.com/")
+    return f"\n      <footer>Generated from {_e(repository)}.</footer>"
 
 
 def _render_favicon_link(favicon: Path | None) -> str:
@@ -225,12 +290,29 @@ def _render_favicon_link(favicon: Path | None) -> str:
 
 
 def _render_sections(artifacts: list[Artifact]) -> str:
-    audio = [artifact for artifact in artifacts if artifact.kind == "audio"]
-    images = [artifact for artifact in artifacts if artifact.kind == "image"]
-    files = [artifact for artifact in artifacts if artifact.kind == "file"]
+    finding_artifacts = [
+        artifact for artifact in artifacts if _is_finding_artifact(artifact)
+    ]
+    generic_artifacts = [
+        artifact for artifact in artifacts if not _is_finding_artifact(artifact)
+    ]
+    recording_spectrograms = [
+        artifact
+        for artifact in generic_artifacts
+        if _is_recording_spectrogram(artifact)
+    ]
+    audio = [artifact for artifact in generic_artifacts if artifact.kind == "audio"]
+    images = [
+        artifact
+        for artifact in generic_artifacts
+        if artifact.kind == "image" and not _is_recording_spectrogram(artifact)
+    ]
+    files = [artifact for artifact in generic_artifacts if artifact.kind == "file"]
 
     sections = [
         _render_audio_section(audio),
+        _render_finding_section(finding_artifacts),
+        _render_recording_spectrogram_section(recording_spectrograms),
         _render_image_section(images),
         _render_file_section(files),
     ]
@@ -240,17 +322,92 @@ def _render_sections(artifacts: list[Artifact]) -> str:
     return '\n      <p class="empty">No audio or plots were generated.</p>\n'
 
 
+def _is_finding_artifact(artifact: Artifact) -> bool:
+    return artifact.path.name.startswith("finding_3m56_3m59_")
+
+
+def _is_recording_spectrogram(artifact: Artifact) -> bool:
+    return artifact.path.name.startswith(RECORDING_SPECTROGRAM_PREFIX)
+
+
+def _render_finding_section(artifacts: list[Artifact]) -> str:
+    if not artifacts:
+        return ""
+
+    by_name = {artifact.path.name: artifact for artifact in artifacts}
+    context = by_name.get("finding_3m56_3m59_context.wav")
+    target = by_name.get("finding_3m56_3m59_target.wav")
+    highpass = by_name.get("finding_3m56_3m59_target_highpass_2k.mp3")
+    spectrogram = by_name.get("finding_3m56_3m59_context_spectrogram.png")
+    delta = by_name.get("finding_3m56_3m59_delta_bands.png")
+
+    cards = [
+        "\n      <h2>Notable Moment</h2>",
+        '      <section class="finding">',
+        "        <h3>Laatste stuk, 3:56-3:59</h3>",
+        "        <p>Broad high-frequency rattle: total level is slightly lower, "
+        "but the 2-24 kHz bands rise by about 1.8-3.0 dB. Peak is around "
+        "3:57.5-3:58.0.</p>",
+    ]
+
+    for label, artifact in (
+        ("Context, 3:53-4:02", context),
+        ("Target, 3:56-3:59", target),
+        ("Target high-pass above 2 kHz", highpass),
+    ):
+        if artifact is None:
+            continue
+        url = _asset_url(artifact.path)
+        cards.append(
+            '        <div class="card compact">\n'
+            f'          <h4>{_e(label)} <span class="src">{_e(_file_label(artifact))}</span></h4>\n'
+            f'          <audio controls preload="metadata" src="{url}"></audio>\n'
+            "        </div>"
+        )
+
+    for label, artifact in (
+        ("Spectrogram context", spectrogram),
+        ("Band delta vs surrounding context", delta),
+    ):
+        if artifact is None:
+            continue
+        cards.append(_render_figure(artifact, label, indent="        "))
+
+    cards.append("      </section>")
+    return "\n".join(cards)
+
+
+def _render_recording_spectrogram_section(artifacts: list[Artifact]) -> str:
+    if not artifacts:
+        return ""
+
+    rendered = [
+        "\n      <h2>Recording Spectrograms</h2>",
+        '      <p class="section-copy">Every file in ./recordings/, rendered the same way so bad bands and timing patterns compare cleanly.</p>',
+    ]
+    for artifact in artifacts:
+        rendered.append(
+            _render_figure(artifact, _recording_spectrogram_caption(artifact))
+        )
+    return "\n".join(rendered)
+
+
+def _recording_spectrogram_caption(artifact: Artifact) -> str:
+    stem = artifact.path.stem.removeprefix(RECORDING_SPECTROGRAM_PREFIX)
+    return f"recording spectrogram: {stem.replace('_', ' ')}"
+
+
 def _render_audio_section(artifacts: list[Artifact]) -> str:
     if not artifacts:
         return ""
     cards: list[str] = ["\n      <h2>Audio</h2>"]
-    for artifact in artifacts:
-        title = _e(_display_name(artifact.path))
-        label = _e(_file_label(artifact))
+    for artifact in _ordered_artifacts(artifacts, AUDIO_ORDER):
+        title, label, description = _audio_copy(artifact)
         url = _asset_url(artifact.path)
         cards.append(
             '      <div class="card">\n'
-            f'        <h3>{title} <span class="src">{label}</span></h3>\n'
+            f'        <h3>{_e(title)} <span class="src">{_e(label)}</span></h3>\n'
+            f"        <p>{_e(description)}</p>\n"
             f'        <audio controls preload="metadata" src="{url}"></audio>\n'
             f'        <p><a href="{url}" download>Download</a></p>\n'
             "      </div>"
@@ -261,17 +418,127 @@ def _render_audio_section(artifacts: list[Artifact]) -> str:
 def _render_image_section(artifacts: list[Artifact]) -> str:
     if not artifacts:
         return ""
-    rendered: list[str] = ["\n      <h2>Plots</h2>"]
-    for artifact in artifacts:
-        title = _e(_display_name(artifact.path))
-        label = _e(_file_label(artifact))
-        rendered.append(
-            "      <figure>\n"
-            f'        <img src="{_asset_url(artifact.path)}" alt="{title}">\n'
-            f'        <figcaption>{title} <span class="src">{label}</span></figcaption>\n'
-            "      </figure>"
-        )
+    ordered = _ordered_artifacts(artifacts, IMAGE_ORDER)
+    rendered: list[str] = []
+
+    spectrogram = _artifact_named(ordered, "spectrogram.png")
+    if spectrogram is not None:
+        rendered.extend([
+            "\n      <h2>Spectrogram</h2>",
+            '      <p class="section-copy">log-frequency dB spectrogram of the original recording</p>',
+            _render_figure(spectrogram, "spectrogram of the original recording"),
+        ])
+
+    analysis = [
+        artifact for artifact in ordered if artifact.path.name != "spectrogram.png"
+    ]
+    if analysis:
+        rendered.extend([
+            "\n      <h2>Analysis</h2>",
+            '      <p class="section-copy">Frame features and per-octave-band energy contrast across the 13 s mark.</p>',
+        ])
+
+    for artifact in analysis:
+        _, _, caption = _image_copy(artifact)
+        rendered.append(_render_figure(artifact, caption))
+        if artifact.path.name == "analysis.png":
+            rendered.append(
+                '      <p class="section-copy">Same analysis applied to the rattles stem validates the split.</p>'
+            )
+
     return "\n".join(rendered)
+
+
+def _render_figure(artifact: Artifact, caption: str, *, indent: str = "      ") -> str:
+    label = _file_label(artifact)
+    asset_url = _asset_url(artifact.path)
+    lightbox_id = _element_id("image", artifact.path)
+    return (
+        f"{indent}<figure>\n"
+        f'{indent}  <a class="image-link" href="#{lightbox_id}" aria-label="Open {_e(caption)} large">\n'
+        f'{indent}    <img src="{asset_url}" alt="{_e(caption)}">\n'
+        f"{indent}  </a>\n"
+        f'{indent}  <figcaption>{_e(caption)} <span class="src">{_e(label)}</span></figcaption>\n'
+        f"{indent}</figure>\n"
+        f'{indent}<div class="lightbox" id="{lightbox_id}" role="dialog" aria-modal="true" aria-label="{_e(caption)}">\n'
+        f'{indent}  <a class="lightbox-backdrop" href="#" aria-label="Close image"></a>\n'
+        f'{indent}  <a class="lightbox-close" href="#" aria-label="Close image">Close</a>\n'
+        f'{indent}  <img src="{asset_url}" alt="{_e(caption)}">\n'
+        f"{indent}</div>"
+    )
+
+
+def _ordered_artifacts(
+    artifacts: list[Artifact], names: tuple[str, ...]
+) -> list[Artifact]:
+    known = [
+        artifact
+        for name in names
+        for artifact in artifacts
+        if artifact.path.name == name
+    ]
+    unknown = [artifact for artifact in artifacts if artifact.path.name not in names]
+    return [*known, *unknown]
+
+
+def _artifact_named(artifacts: list[Artifact], name: str) -> Artifact | None:
+    for artifact in artifacts:
+        if artifact.path.name == name:
+            return artifact
+    return None
+
+
+def _audio_copy(artifact: Artifact) -> tuple[str, str, str]:
+    match artifact.path.name:
+        case "Shitty motor (goede recording).m4a":
+            return (
+                "Original recording",
+                "m4a",
+                "Untouched input - motorcycle engine with intermittent rattles.",
+            )
+        case "engine.mp3":
+            return (
+                "Engine stem",
+                "mp3 - low band, < 1800 Hz",
+                "Combustion drone, idle fundamentals, low-mid body.",
+            )
+        case "rattles.mp3":
+            return (
+                "Rattles stem",
+                "mp3 - high band, > 1800 Hz",
+                "Mechanical rattles, knocks, dangling-part chatter.",
+            )
+
+    return (
+        _display_name(artifact.path),
+        _file_label(artifact),
+        "Generated audio artifact.",
+    )
+
+
+def _image_copy(artifact: Artifact) -> tuple[str, str, str]:
+    match artifact.path.name:
+        case "analysis.png":
+            return (
+                "Analysis",
+                _file_label(artifact),
+                "analysis plot of the original recording",
+            )
+        case "rattles_analysis.png":
+            return (
+                "Rattles analysis",
+                _file_label(artifact),
+                "analysis plot of the rattles stem",
+            )
+        case "spectrogram.png":
+            return (
+                "Spectrogram",
+                _file_label(artifact),
+                "spectrogram of the original recording",
+            )
+
+    title = _display_name(artifact.path)
+    return (title, _file_label(artifact), title)
 
 
 def _render_file_section(artifacts: list[Artifact]) -> str:
@@ -314,6 +581,17 @@ def _relative_name(path: Path, output_dir: Path) -> str:
 
 def _asset_url(path: Path) -> str:
     return "/".join(quote(part, safe="") for part in path.as_posix().split("/"))
+
+
+def _element_id(prefix: str, path: Path) -> str:
+    chars: list[str] = []
+    for char in path.stem.lower():
+        if char.isalnum():
+            chars.append(char)
+        elif chars and chars[-1] != "-":
+            chars.append("-")
+    slug = "".join(chars).strip("-") or "asset"
+    return f"{prefix}-{slug}"
 
 
 def _as_mapping(value: object) -> Mapping[str, object]:

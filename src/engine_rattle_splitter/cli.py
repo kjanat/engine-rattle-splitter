@@ -12,7 +12,13 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from engine_rattle_splitter import analysis, pipeline, site_builder, spectrogram
+from engine_rattle_splitter import (
+    analysis,
+    moments,
+    pipeline,
+    site_builder,
+    spectrogram,
+)
 
 DEFAULT_INPUT = Path("recordings/Shitty motor (goede recording).m4a")
 DEFAULT_OUTPUT_DIR = Path("artifacts/stems")
@@ -23,6 +29,7 @@ DEFAULT_SPLIT_AT = 13.0
 DEFAULT_ANALYSIS_PNG = Path("artifacts/analysis.png")
 DEFAULT_SPECTROGRAM_PNG = Path("artifacts/spectrogram.png")
 DEFAULT_SITE_DIR = Path("artifacts/site")
+DEFAULT_RECORDINGS_DIR = Path("recordings")
 DEFAULT_STYLESHEET = Path("web/site.css")
 DEFAULT_FAVICON = Path("web/favicon.svg")
 
@@ -125,6 +132,12 @@ def cmd_site(args: Args) -> int:
         sample_rate=args.sample_rate,
         output_png=out / "spectrogram.png",
     )
+    for recording in _recordings(DEFAULT_RECORDINGS_DIR):
+        spectrogram.run(
+            input_path=recording,
+            sample_rate=args.sample_rate,
+            output_png=out / _recording_spectrogram_name(recording),
+        )
     analysis.run(
         input_path=args.input,
         sample_rate=args.sample_rate,
@@ -137,6 +150,7 @@ def cmd_site(args: Args) -> int:
         split_at=args.split_at,
         output_png=out / "rattles_analysis.png",
     )
+    moments.build_default(out, args.sample_rate)
 
     _ = shutil.copy(args.input, out / args.input.name)
     (out / "engine.wav").unlink(missing_ok=True)
@@ -150,6 +164,30 @@ def cmd_site(args: Args) -> int:
 
     print(f"site -> {out}")
     return 0
+
+
+def _recordings(path: Path) -> list[Path]:
+    if not path.exists():
+        return []
+    return sorted(
+        child
+        for child in path.iterdir()
+        if child.is_file() and child.suffix.lower() in site_builder.AUDIO_EXTENSIONS
+    )
+
+
+def _recording_spectrogram_name(recording: Path) -> str:
+    return f"recording_spectrogram_{_slug(recording.stem)}.png"
+
+
+def _slug(value: str) -> str:
+    chars: list[str] = []
+    for char in value.lower():
+        if char.isalnum():
+            chars.append(char)
+        elif chars and chars[-1] != "_":
+            chars.append("_")
+    return "".join(chars).strip("_") or "recording"
 
 
 INPUT_HELP = (

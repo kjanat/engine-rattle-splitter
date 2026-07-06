@@ -69,5 +69,5 @@ through.
 
 [pages]: https://kjanat.github.io/engine-rattle-splitter/
 
-<!-- markdownlint-disable-file MD059 -->
-<!-- rumdl-disable-file MD059 -->
+<!-- markdownlint-disable-file MD013 MD059 -->
+<!-- rumdl-disable-file        MD013 MD059 -->

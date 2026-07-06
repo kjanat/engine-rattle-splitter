@@ -26,6 +26,10 @@ body {
 	justify-content: center;
 }
 
+body.has-lightbox {
+	overflow: hidden;
+}
+
 main {
 	width: 100%;
 	max-width: 720px;
@@ -53,6 +57,11 @@ h2 {
 p.lede {
 	color: var(--muted);
 	margin: 0 0 1.5rem;
+}
+
+.section-copy {
+	color: var(--muted);
+	margin: 0 0 0.75rem;
 }
 
 .site-header .lede {
@@ -96,10 +105,46 @@ a {
 	gap: 1rem;
 }
 
+.card h4 {
+	margin: 0 0 0.35rem;
+	font-size: 0.88rem;
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 1rem;
+}
+
 .card p {
 	margin: 0 0 0.75rem;
 	color: var(--muted);
 	font-size: 0.88rem;
+}
+
+.card.compact {
+	padding: 0.8rem 0.9rem;
+}
+
+.finding {
+	background: linear-gradient(
+		145deg,
+		rgb(255 138 61 / 12%),
+		rgb(24 24 25 / 92%)
+	);
+	border: 1px solid rgb(255 138 61 / 35%);
+	border-radius: 14px;
+	padding: 1rem 1.1rem;
+	margin: 0.75rem 0 1.5rem;
+}
+
+.finding h3 {
+	margin: 0 0 0.35rem;
+	font-size: 1rem;
+}
+
+.finding > p {
+	margin: 0 0 0.9rem;
+	color: var(--muted);
+	font-size: 0.9rem;
 }
 
 audio {
@@ -111,6 +156,69 @@ img {
 	border-radius: 8px;
 	display: block;
 	margin: 0.5rem 0;
+}
+
+.image-link {
+	display: block;
+	color: inherit;
+	cursor: zoom-in;
+}
+
+.image-link img {
+	transition: filter 150ms ease, transform 150ms ease;
+}
+
+.image-link:hover img {
+	filter: brightness(1.08);
+	transform: scale(1.005);
+}
+
+.lightbox {
+	display: none;
+	position: fixed;
+	inset: 0;
+	z-index: 10;
+	align-items: center;
+	justify-content: center;
+	padding: 2rem;
+	background: rgb(0 0 0 / 88%);
+}
+
+.lightbox:target {
+	display: flex;
+}
+
+.lightbox.is-open {
+	display: flex;
+}
+
+.lightbox-backdrop {
+	position: absolute;
+	inset: 0;
+}
+
+.lightbox-close {
+	position: fixed;
+	top: 1rem;
+	right: 1rem;
+	z-index: 12;
+	border: 1px solid #4a4a50;
+	border-radius: 999px;
+	background: rgb(24 24 25 / 92%);
+	color: var(--fg);
+	font-size: 0.85rem;
+	line-height: 1;
+	padding: 0.55rem 0.75rem;
+	text-decoration: none;
+}
+
+.lightbox img {
+	z-index: 11;
+	width: auto;
+	max-width: min(96vw, 1800px);
+	max-height: 92vh;
+	margin: 0;
+	box-shadow: 0 1rem 4rem rgb(0 0 0 / 65%);
 }
 
 figure {
@@ -139,6 +247,14 @@ figcaption {
 .src {
 	font-size: 0.75rem;
 	color: var(--muted);
+}
+
+footer {
+	border-top: 1px solid #26262a;
+	color: var(--muted);
+	font-size: 0.8rem;
+	margin-top: 2rem;
+	padding-top: 1rem;
 }
 
 @media (width <= 520px) {
