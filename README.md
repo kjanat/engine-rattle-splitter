@@ -48,11 +48,10 @@ bundled file and likely need adjusting for other recordings:
 
 ## Listen / look
 
-Stems and plots are regenerated from the bundled m4a on every CI run
-and hosted at <https://kjanat.github.io/engine-rattle-splitter/>. The
-spectrogram, analysis plots, and playable mp3 stems live there. The page is
-rendered from `web/site.json` + `web/site.css`; generated outputs are not
-committed to this repo.
+Stems and plots are regenerated from the bundled m4a on every CI run and hosted
+[here][pages]. The site page is rendered from the files present in the CI output
+directory; adding or renaming generated artifacts changes the page without
+editing a content manifest. Generated outputs are not committed to this repo.
 
 ![spectrogram](https://kjanat.github.io/engine-rattle-splitter/spectrogram.png)
 
@@ -67,3 +66,8 @@ energy is 2× louder before 13 s, with no engine-band content leaking
 through.
 
 ![rattles analysis](https://kjanat.github.io/engine-rattle-splitter/rattles_analysis.png)
+
+[pages]: https://kjanat.github.io/engine-rattle-splitter/
+
+<!-- markdownlint-disable-file MD059 -->
+<!-- rumdl-disable-file MD059 -->

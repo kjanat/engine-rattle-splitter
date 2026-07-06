@@ -10,13 +10,12 @@ reusable code is under `src/engine_rattle_splitter/`:
 - `filters.py`: complementary Butterworth crossover logic.
 - `pipeline.py`: high-level split orchestration.
 - `analysis.py` and `spectrogram.py`: diagnostic plot generation.
-- `site_builder.py`: renders `artifacts/site/index.html` from site config,
-  CSS, and generated audio/plot assets.
+- `site_builder.py`: renders `artifacts/site/index.html` from the files present
+  in the generated site output directory.
 
 Committed source recordings live in `recordings/`. Static site source files live
-in `web/` (`site.json`, `site.css`, and `favicon.svg`). Generated stems, plots,
-and deployable site output go under `artifacts/` and should not be treated as
-source.
+in `web/` (`site.css` and `favicon.svg`). Generated stems, plots, and deployable
+site output go under `artifacts/` and should not be treated as source.
 
 ## Build, Test, and Development Commands
 

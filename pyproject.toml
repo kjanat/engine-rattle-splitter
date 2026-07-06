@@ -6,6 +6,9 @@ readme          = "README.md"
 requires-python = ">=3.14"
 dependencies    = ["matplotlib>=3.10.9", "numpy>=2.4.6", "scipy>=1.17.1"]
 
+[project.urls]
+Source = "https://github.com/kjanat/engine-rattle-splitter"
+
 [project.scripts]
 engine-rattle-splitter = "engine_rattle_splitter.cli:main"
 

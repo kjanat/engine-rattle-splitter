@@ -23,7 +23,6 @@ DEFAULT_SPLIT_AT = 13.0
 DEFAULT_ANALYSIS_PNG = Path("artifacts/analysis.png")
 DEFAULT_SPECTROGRAM_PNG = Path("artifacts/spectrogram.png")
 DEFAULT_SITE_DIR = Path("artifacts/site")
-DEFAULT_SITE_CONFIG = Path("web/site.json")
 DEFAULT_STYLESHEET = Path("web/site.css")
 DEFAULT_FAVICON = Path("web/favicon.svg")
 
@@ -40,7 +39,6 @@ class Args(argparse.Namespace):
     order: int = DEFAULT_CROSSOVER_ORDER
     split_at: float = DEFAULT_SPLIT_AT
     output: Path = DEFAULT_ANALYSIS_PNG
-    site_config: Path = DEFAULT_SITE_CONFIG
     stylesheet: Path = DEFAULT_STYLESHEET
     favicon: Path = DEFAULT_FAVICON
     func: Callable[..., int]
@@ -105,9 +103,6 @@ def cmd_site(args: Args) -> int:
     if not args.input.exists():
         print(f"missing: {args.input}", file=sys.stderr)
         return 1
-    if not args.site_config.exists():
-        print(f"missing: {args.site_config}", file=sys.stderr)
-        return 1
     if not args.stylesheet.exists():
         print(f"missing: {args.stylesheet}", file=sys.stderr)
         return 1
@@ -118,7 +113,7 @@ def cmd_site(args: Args) -> int:
     out = args.output_dir
     out.mkdir(parents=True, exist_ok=True)
 
-    stats = pipeline.split(
+    pipeline.split(
         input_path=args.input,
         output_dir=out,
         sample_rate=args.sample_rate,
@@ -143,29 +138,15 @@ def cmd_site(args: Args) -> int:
         output_png=out / "rattles_analysis.png",
     )
 
-    input_asset = out / args.input.name
-    _ = shutil.copy(args.input, input_asset)
+    _ = shutil.copy(args.input, out / args.input.name)
+    (out / "engine.wav").unlink(missing_ok=True)
+    (out / "rattles.wav").unlink(missing_ok=True)
+
     site_builder.build(
-        config_path=args.site_config,
         stylesheet_path=args.stylesheet,
         favicon_path=args.favicon,
         output_dir=out,
-        assets={
-            "original": input_asset,
-            "engine": stats["engine_mp3"],
-            "rattles": stats["rattles_mp3"],
-            "spectrogram": out / "spectrogram.png",
-            "analysis": out / "analysis.png",
-            "rattles_analysis": out / "rattles_analysis.png",
-        },
-        values={
-            "input_ext": args.input.suffix.lstrip("."),
-            "crossover_hz": f"{args.crossover:g}",
-            "split_at": f"{args.split_at:g}",
-        },
     )
-    (out / "engine.wav").unlink(missing_ok=True)
-    (out / "rattles.wav").unlink(missing_ok=True)
 
     print(f"site -> {out}")
     return 0
@@ -330,13 +311,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_SITE_DIR,
         metavar="DIR",
         help="site output directory (default: %(default)s)",
-    )
-    _ = st.add_argument(
-        "--site-config",
-        type=Path,
-        default=DEFAULT_SITE_CONFIG,
-        metavar="JSON",
-        help="path to site content config (default: %(default)s)",
     )
     _ = st.add_argument(
         "--stylesheet",

@@ -31,6 +31,14 @@ main {
 	max-width: 720px;
 }
 
+.site-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 1rem;
+	margin-bottom: 1.5rem;
+}
+
 h1 {
 	font-size: 1.6rem;
 	margin: 0 0 0.25rem;
@@ -47,8 +55,28 @@ p.lede {
 	margin: 0 0 1.5rem;
 }
 
+.site-header .lede {
+	margin: 0;
+}
+
 a {
 	color: var(--accent);
+}
+
+.source-link {
+	flex: none;
+	border: 1px solid #343438;
+	border-radius: 6px;
+	color: var(--accent);
+	font-size: 0.82rem;
+	line-height: 1;
+	margin-top: 0.25rem;
+	padding: 0.38rem 0.5rem;
+	text-decoration: none;
+}
+
+.source-link:hover {
+	background: var(--panel);
 }
 
 .card {
@@ -85,15 +113,40 @@ img {
 	margin: 0.5rem 0;
 }
 
+figure {
+	margin: 0.75rem 0 1.25rem;
+}
+
+figcaption {
+	color: var(--muted);
+	font-size: 0.85rem;
+	margin-top: 0.35rem;
+}
+
+.files {
+	margin: 0.75rem 0;
+	padding-left: 1.2rem;
+}
+
+.files li {
+	margin: 0.35rem 0;
+}
+
+.empty {
+	color: var(--muted);
+}
+
 .src {
 	font-size: 0.75rem;
 	color: var(--muted);
 }
 
-footer {
-	margin-top: 3rem;
-	padding-top: 1rem;
-	border-top: 1px solid #26262a;
-	color: var(--muted);
-	font-size: 0.8rem;
+@media (width <= 520px) {
+	.site-header {
+		flex-direction: column;
+	}
+
+	.source-link {
+		margin-top: 0;
+	}
 }
