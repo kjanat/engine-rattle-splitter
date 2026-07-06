@@ -110,6 +110,7 @@ def _ffmpeg_extract(
         cmd.extend(["-af", audio_filter])
     cmd.append(str(output_path))
     _ = subprocess.run(cmd, check=True, capture_output=True)
+    print(f"wrote {output_path}")
 
 
 def _write_plots(moment: FindingMoment, output_dir: Path, sample_rate: int) -> None:

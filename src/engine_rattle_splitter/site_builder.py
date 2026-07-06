@@ -99,7 +99,7 @@ def build(
 
     artifacts = discover(output_dir, exclude=excluded)
     html_out = output_dir / "index.html"
-    html_out.write_text(
+    _ = html_out.write_text(
         _render_html(
             metadata=metadata,
             artifacts=artifacts,
@@ -108,6 +108,7 @@ def build(
         ),
         encoding="utf-8",
     )
+    print(f"wrote {html_out}")
     return html_out
 
 
@@ -147,6 +148,7 @@ def _copy_required(source: Path, output_dir: Path) -> Path:
         raise FileNotFoundError(msg)
     target = output_dir / source.name
     _ = shutil.copy(source, target)
+    print(f"wrote {target}")
     return target
 
 
@@ -155,6 +157,7 @@ def _copy_optional(source: Path | None, output_dir: Path) -> Path | None:
         return None
     target = output_dir / source.name
     _ = shutil.copy(source, target)
+    print(f"wrote {target}")
     return target
 
 

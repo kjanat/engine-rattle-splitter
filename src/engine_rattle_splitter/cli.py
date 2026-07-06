@@ -51,7 +51,7 @@ class Args(argparse.Namespace):
     output: Path = DEFAULT_ANALYSIS_PNG
     stylesheet: Path = DEFAULT_STYLESHEET
     favicon: Path = DEFAULT_FAVICON
-    func: Callable[..., int]
+    func: Callable[["Args"], int] | None = None
 
 
 def cmd_separate(args: Args) -> int:
@@ -184,11 +184,13 @@ def cmd_site(args: Args) -> int:
         )
         _finish(futures)
 
-    _ = shutil.copy(args.input, out / args.input.name)
+    input_copy = out / args.input.name
+    _ = shutil.copy(args.input, input_copy)
+    print(f"wrote {input_copy}")
     (out / "engine.wav").unlink(missing_ok=True)
     (out / "rattles.wav").unlink(missing_ok=True)
 
-    site_builder.build(
+    _ = site_builder.build(
         stylesheet_path=args.stylesheet,
         favicon_path=args.favicon,
         output_dir=out,
@@ -205,7 +207,7 @@ def _run_split(
     crossover_hz: float,
     order: int,
 ) -> None:
-    pipeline.split(
+    _ = pipeline.split(
         input_path=input_path,
         output_dir=output_dir,
         sample_rate=sample_rate,
@@ -258,7 +260,9 @@ def _copy_default_recording_spectrogram(
 ) -> None:
     for recording in recordings:
         if _same_path(recording, input_path):
-            _ = shutil.copy(source, output_dir / _recording_spectrogram_name(recording))
+            target = output_dir / _recording_spectrogram_name(recording)
+            _ = shutil.copy(source, target)
+            print(f"wrote {target}")
             return
 
 
@@ -492,6 +496,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args(namespace=Args())
+    if args.func is None:
+        return 2
     return args.func(args)
 
 

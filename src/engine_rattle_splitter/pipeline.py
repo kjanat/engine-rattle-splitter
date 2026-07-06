@@ -47,9 +47,13 @@ def split(
     rattles_mp3 = output_dir / "rattles.mp3"
 
     write_wav(engine_wav, sample_rate, engine)
+    print(f"wrote {engine_wav}")
     write_wav(rattles_wav, sample_rate, rattles)
+    print(f"wrote {rattles_wav}")
     encode_mp3(engine_wav, engine_mp3)
+    print(f"wrote {engine_mp3}")
     encode_mp3(rattles_wav, rattles_mp3)
+    print(f"wrote {rattles_mp3}")
 
     duration_s: float = int(audio.shape[1]) / sample_rate
     return SplitStats(
