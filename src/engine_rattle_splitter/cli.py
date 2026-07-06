@@ -14,6 +14,7 @@ import sys
 from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
+from typing import Self
 
 from engine_rattle_splitter import (
     analysis,
@@ -51,7 +52,7 @@ class Args(argparse.Namespace):
     output: Path = DEFAULT_ANALYSIS_PNG
     stylesheet: Path = DEFAULT_STYLESHEET
     favicon: Path = DEFAULT_FAVICON
-    func: Callable[["Args"], int] | None = None
+    func: Callable[[Self], int] | None = None
 
 
 def cmd_separate(args: Args) -> int:
