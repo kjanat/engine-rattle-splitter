@@ -3,23 +3,38 @@ name            = "engine-rattle-splitter"
 version         = "0.1.0"
 description     = "Split motorcycle engine recordings into combustion drone and mechanical rattle stems"
 readme          = "README.md"
-requires-python = ">=3.14"
-dependencies    = ["matplotlib>=3.10.9", "numpy>=2.4.6", "scipy>=1.17.1"]
+requires-python = ">=3.14,<3.15"
+dependencies    = [
+  "matplotlib>=3.11.0",
+  "numpy>=2.5.1",
+  "scipy>=1.18.0",
+]
 
 [project.urls]
-Source = "https://github.com/kjanat/engine-rattle-splitter"
+homepage   = "https://kjanat.github.io/engine-rattle-splitter"
+repository = "https://github.com/kjanat/engine-rattle-splitter"
 
 [project.scripts]
 engine-rattle-splitter = "engine_rattle_splitter.cli:main"
 
 [dependency-groups]
-dev = ["basedpyright>=1.39.6", "ruff>=0.15.14", "scipy-stubs>=1.17.1.5", "ty>=0.0.39"]
+dev   = [
+  { include-group = "nice" },
+  { include-group = "stubs" },
+]
+nice  = [
+  "basedpyright>=1.39.9",
+  "ruff>=0.15.20",
+  "ty>=0.0.56",
+]
+stubs = [
+  "scipy-stubs>=1.18.0.0",
+]
 
 [build-system]
 requires      = ["uv_build>=0.11.26,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.pyright]
-venvPath         = "."
-venv             = ".venv"
-typeCheckingMode = "standard"
+venvPath = "."
+venv     = ".venv"

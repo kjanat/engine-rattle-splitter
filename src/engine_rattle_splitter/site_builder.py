@@ -381,24 +381,20 @@ def _render_image_section(artifacts: list[Artifact]) -> str:
 
     spectrogram = _artifact_named(ordered, "spectrogram.png")
     if spectrogram is not None:
-        rendered.extend(
-            [
-                "\n      <h2>Spectrogram</h2>",
-                '      <p class="section-copy">log-frequency dB spectrogram of the original recording</p>',
-                _render_figure(spectrogram, "spectrogram of the original recording"),
-            ]
-        )
+        rendered.extend([
+            "\n      <h2>Spectrogram</h2>",
+            '      <p class="section-copy">log-frequency dB spectrogram of the original recording</p>',
+            _render_figure(spectrogram, "spectrogram of the original recording"),
+        ])
 
     analysis = [
         artifact for artifact in ordered if artifact.path.name != "spectrogram.png"
     ]
     if analysis:
-        rendered.extend(
-            [
-                "\n      <h2>Analysis</h2>",
-                '      <p class="section-copy">Frame features and per-octave-band energy contrast across the 13 s mark.</p>',
-            ]
-        )
+        rendered.extend([
+            "\n      <h2>Analysis</h2>",
+            '      <p class="section-copy">Frame features and per-octave-band energy contrast across the 13 s mark.</p>',
+        ])
 
     for artifact in analysis:
         _, _, caption = _image_copy(artifact)

@@ -7,9 +7,12 @@ Subcommands:
 """
 
 import argparse
+import multiprocessing
+import os
 import shutil
 import sys
 from collections.abc import Callable
+from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
 
 from engine_rattle_splitter import (
@@ -103,9 +106,8 @@ def cmd_spectrogram(args: Args) -> int:
 def cmd_site(args: Args) -> int:
     """Build the full static site under args.output_dir in one process.
 
-    One Python invocation instead of four — skips ~3 cold-start +
-    numpy/scipy/matplotlib imports per command (the actual win) and
-    keeps every output in the same dir for the Pages workflow to upload.
+    Independent audio/plot jobs run concurrently; the rattles-stem analysis
+    waits only for the split output it actually needs.
     """
     if not args.input.exists():
         print(f"missing: {args.input}", file=sys.stderr)
@@ -119,38 +121,68 @@ def cmd_site(args: Args) -> int:
 
     out = args.output_dir
     out.mkdir(parents=True, exist_ok=True)
+    recordings = _recordings(DEFAULT_RECORDINGS_DIR)
+    default_spectrogram = out / "spectrogram.png"
+    recording_jobs = [
+        recording for recording in recordings if not _same_path(recording, args.input)
+    ]
 
-    pipeline.split(
-        input_path=args.input,
-        output_dir=out,
-        sample_rate=args.sample_rate,
-        crossover_hz=args.crossover,
-        order=args.order,
-    )
-    spectrogram.run(
-        input_path=args.input,
-        sample_rate=args.sample_rate,
-        output_png=out / "spectrogram.png",
-    )
-    for recording in _recordings(DEFAULT_RECORDINGS_DIR):
-        spectrogram.run(
-            input_path=recording,
-            sample_rate=args.sample_rate,
-            output_png=out / _recording_spectrogram_name(recording),
+    with ProcessPoolExecutor(
+        max_workers=_site_worker_count(recording_jobs),
+        mp_context=multiprocessing.get_context("fork"),
+    ) as pool:
+        split_future = pool.submit(
+            _run_split,
+            args.input,
+            out,
+            args.sample_rate,
+            args.crossover,
+            args.order,
         )
-    analysis.run(
-        input_path=args.input,
-        sample_rate=args.sample_rate,
-        split_at=args.split_at,
-        output_png=out / "analysis.png",
-    )
-    analysis.run(
-        input_path=out / "rattles.wav",
-        sample_rate=args.sample_rate,
-        split_at=args.split_at,
-        output_png=out / "rattles_analysis.png",
-    )
-    moments.build_default(out, args.sample_rate)
+        default_spectrogram_future = pool.submit(
+            _run_spectrogram,
+            args.input,
+            args.sample_rate,
+            default_spectrogram,
+        )
+        futures: list[Future[None]] = [
+            pool.submit(
+                _run_analysis,
+                args.input,
+                args.sample_rate,
+                args.split_at,
+                out / "analysis.png",
+            ),
+            pool.submit(_run_moments, out, args.sample_rate),
+        ]
+        futures.extend(
+            pool.submit(
+                _run_spectrogram,
+                recording,
+                args.sample_rate,
+                out / _recording_spectrogram_name(recording),
+            )
+            for recording in recording_jobs
+        )
+
+        split_future.result()
+        futures.append(
+            pool.submit(
+                _run_analysis,
+                out / "rattles.wav",
+                args.sample_rate,
+                args.split_at,
+                out / "rattles_analysis.png",
+            )
+        )
+        default_spectrogram_future.result()
+        _copy_default_recording_spectrogram(
+            input_path=args.input,
+            recordings=recordings,
+            source=default_spectrogram,
+            output_dir=out,
+        )
+        _finish(futures)
 
     _ = shutil.copy(args.input, out / args.input.name)
     (out / "engine.wav").unlink(missing_ok=True)
@@ -164,6 +196,74 @@ def cmd_site(args: Args) -> int:
 
     print(f"site -> {out}")
     return 0
+
+
+def _run_split(
+    input_path: Path,
+    output_dir: Path,
+    sample_rate: int,
+    crossover_hz: float,
+    order: int,
+) -> None:
+    pipeline.split(
+        input_path=input_path,
+        output_dir=output_dir,
+        sample_rate=sample_rate,
+        crossover_hz=crossover_hz,
+        order=order,
+    )
+
+
+def _run_spectrogram(input_path: Path, sample_rate: int, output_png: Path) -> None:
+    spectrogram.run(
+        input_path=input_path, sample_rate=sample_rate, output_png=output_png
+    )
+
+
+def _run_analysis(
+    input_path: Path,
+    sample_rate: int,
+    split_at: float,
+    output_png: Path,
+) -> None:
+    analysis.run(
+        input_path=input_path,
+        sample_rate=sample_rate,
+        split_at=split_at,
+        output_png=output_png,
+    )
+
+
+def _run_moments(output_dir: Path, sample_rate: int) -> None:
+    moments.build_default(output_dir, sample_rate)
+
+
+def _finish(futures: list[Future[None]]) -> None:
+    for future in futures:
+        future.result()
+
+
+def _site_worker_count(recording_jobs: list[Path]) -> int:
+    job_count = 5 + len(recording_jobs)
+    cpu_count = os.cpu_count() or 2
+    return min(max(2, job_count), max(2, cpu_count), 6)
+
+
+def _copy_default_recording_spectrogram(
+    *,
+    input_path: Path,
+    recordings: list[Path],
+    source: Path,
+    output_dir: Path,
+) -> None:
+    for recording in recordings:
+        if _same_path(recording, input_path):
+            _ = shutil.copy(source, output_dir / _recording_spectrogram_name(recording))
+            return
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    return left.resolve() == right.resolve()
 
 
 def _recordings(path: Path) -> list[Path]:
