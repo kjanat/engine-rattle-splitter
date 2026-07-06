@@ -26,13 +26,9 @@ DEFAULT_SITE_DIR = Path("dist/site")
 DEFAULT_INDEX_HTML = Path("index.html")
 
 
-def _no_op(_: "Args") -> int:
-    return 0
-
-
 class Args(argparse.Namespace):
     """Typed view of parsed CLI args. Class-level defaults satisfy the
-    type checker; argparse overwrites them on parse_args()."""
+    type checker; argparse overwrites or sets them on parse_args()."""
 
     cmd: str = ""
     sample_rate: int = DEFAULT_SAMPLE_RATE
@@ -43,7 +39,7 @@ class Args(argparse.Namespace):
     split_at: float = DEFAULT_SPLIT_AT
     output: Path = DEFAULT_ANALYSIS_PNG
     index_html: Path = DEFAULT_INDEX_HTML
-    func: Callable[["Args"], int] = _no_op
+    func: Callable[..., int]
 
 
 def cmd_separate(args: Args) -> int:
@@ -178,8 +174,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_SAMPLE_RATE,
         metavar="HZ",
         help=(
-            "decode/resample rate; ffmpeg resamples the input to this "
-            "(default: %(default)s)"
+            "decode/resample rate; ffmpeg resamples the input to this (default: %(default)s)"
         ),
     )
     sub = parser.add_subparsers(dest="cmd", required=True)

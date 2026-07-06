@@ -1,0 +1,11 @@
+{
+	"extends": "https://raw.githubusercontent.com/kjanat/kjanat/HEAD/configs/dprint.remote.json",
+	"exec": {
+		"cwd": "${configDir}",
+		"commands": [
+			{ "command": "tombi format - --stdin-filename {{file_path}}", "exts": ["toml"], "cacheKeyFiles": ["tombi.toml"] }
+		]
+	},
+	"excludes": ["**/*.lock"],
+	"plugins": ["https://plugins.dprint.dev/exec-0.7.2.json"]
+}
