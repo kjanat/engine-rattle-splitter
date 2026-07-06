@@ -2,8 +2,9 @@
 
 ## Project Structure & Module Organization
 
-This is a small Python audio-processing package managed with `uv`. The CLI lives
-in `main.py`; reusable code is under `engine_sound_splitter/`:
+This is a small Python audio-processing package managed with `uv`. Source code
+uses the `src/` layout. The CLI lives in `src/engine_rattle_splitter/cli.py`;
+reusable code is under `src/engine_rattle_splitter/`:
 
 - `audio_io.py`: ffmpeg-backed decode/encode and WAV writing.
 - `filters.py`: complementary Butterworth crossover logic.
@@ -18,13 +19,13 @@ outputs and should not be treated as source.
 ## Build, Test, and Development Commands
 
 - `uv sync --frozen`: install the locked Python 3.14 environment.
-- `uv run engine-sound-splitter separate [INPUT] -o stems`: split an audio file
+- `uv run engine-rattle-splitter separate [INPUT] -o stems`: split an audio file
   into engine and rattle stems.
-- `uv run engine-sound-splitter analyze [INPUT] --split-at 13.0`: compare features
+- `uv run engine-rattle-splitter analyze [INPUT] --split-at 13.0`: compare features
   before and after a transition.
-- `uv run engine-sound-splitter spectrogram [INPUT] -o spectrogram.png`: render
+- `uv run engine-rattle-splitter spectrogram [INPUT] -o spectrogram.png`: render
   a diagnostic spectrogram.
-- `uv run engine-sound-splitter site -o dist/site`: reproduce the GitHub Pages
+- `uv run engine-rattle-splitter site -o dist/site`: reproduce the GitHub Pages
   build locally.
 - `uv run ruff check .`: run lint checks.
 - `uv run basedpyright`: run static type checking.
@@ -38,7 +39,7 @@ Use typed Python with 4-space indentation. Prefer `pathlib.Path`, explicit
 return types, and small functions that keep DSP, I/O, and CLI wiring separate.
 Use `snake_case` for functions and variables, `UPPER_CASE` for constants, and
 short module docstrings that explain behavior. Keep CLI defaults centralized in
-`main.py`.
+`src/engine_rattle_splitter/cli.py`.
 
 ## Testing Guidelines
 

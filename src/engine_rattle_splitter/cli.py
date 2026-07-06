@@ -1,4 +1,4 @@
-"""CLI entry — wires together the engine_sound_splitter pipelines.
+"""CLI entry — wires together the engine_rattle_splitter pipelines.
 
 Subcommands:
   separate     decode → crossover filter → write engine.wav + rattles.wav
@@ -12,7 +12,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from engine_sound_splitter import analysis, pipeline, spectrogram
+from engine_rattle_splitter import analysis, pipeline, spectrogram
 
 DEFAULT_INPUT = Path("Shitty motor (goede recording).m4a")
 DEFAULT_OUTPUT_DIR = Path()
@@ -154,7 +154,7 @@ INPUT_HELP = (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="engine-sound-splitter",
+        prog="engine-rattle-splitter",
         description=(
             "Split engine recordings into a low-band stem (combustion drone) "
             "and a high-band stem (mechanical rattles) via complementary "
@@ -162,9 +162,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         epilog=(
             "Examples:\n"
-            "  python main.py separate ride.flac -o ./stems --crossover 2000\n"
-            "  python main.py analyze  ride.flac --split-at 5.2\n"
-            "  python main.py spectrogram ride.flac -o ride.png"
+            "  engine-rattle-splitter separate ride.flac -o ./stems --crossover 2000\n"
+            "  engine-rattle-splitter analyze  ride.flac --split-at 5.2\n"
+            "  engine-rattle-splitter spectrogram ride.flac -o ride.png"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

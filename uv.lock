@@ -57,7 +57,7 @@ wheels = [
 ]
 
 [[package]]
-name = "engine-sound-splitter"
+name = "engine-rattle-splitter"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

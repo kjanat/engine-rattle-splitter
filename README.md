@@ -1,4 +1,4 @@
-# engine-sound-splitter
+# engine-rattle-splitter
 
 Splits an audio recording into a low-band stem (engine combustion drone)
 and a high-band stem (mechanical rattles / knocks / dangling parts) via
@@ -13,21 +13,21 @@ the defaults.
 ## Usage
 
 ```bash
-uv run python main.py separate     [INPUT] [-o DIR] [--crossover HZ] [--order N]
-uv run python main.py analyze      [INPUT] [--split-at SECONDS] [-o OUT.png]
-uv run python main.py spectrogram  [INPUT] [-o OUT.png]
+uv run engine-rattle-splitter separate     [INPUT] [-o DIR] [--crossover HZ] [--order N]
+uv run engine-rattle-splitter analyze      [INPUT] [--split-at SECONDS] [-o OUT.png]
+uv run engine-rattle-splitter spectrogram  [INPUT] [-o OUT.png]
 ```
 
 Run any subcommand with `--help` for full option descriptions.
 
 ```bash
 # any input format works
-uv run python main.py separate ride.flac -o ./stems --crossover 2000
-uv run python main.py analyze  recording.mp3 --split-at 5.2
-uv run python main.py spectrogram ~/audio/clip.opus -o clip.png
+uv run engine-rattle-splitter separate ride.flac -o ./stems --crossover 2000
+uv run engine-rattle-splitter analyze  recording.mp3 --split-at 5.2
+uv run engine-rattle-splitter spectrogram ~/audio/clip.opus -o clip.png
 
 # no INPUT → falls back to the bundled recording
-uv run python main.py separate
+uv run engine-rattle-splitter separate
 ```
 
 ## Tuning per recording
@@ -49,20 +49,20 @@ bundled file and likely need adjusting for other recordings:
 ## Listen / look
 
 Stems and plots are regenerated from the bundled m4a on every CI run
-and hosted at <https://kjanat.github.io/engine-sound-splitter/>. The
+and hosted at <https://kjanat.github.io/engine-rattle-splitter/>. The
 spectrogram, analysis plots, and playable mp3 stems live there — they
 are not committed to this repo (CI is the source of truth).
 
-![spectrogram](https://kjanat.github.io/engine-sound-splitter/spectrogram.png)
+![spectrogram](https://kjanat.github.io/engine-rattle-splitter/spectrogram.png)
 
 Frame features and per-octave-band energy contrast across the 13 s
 mark of the bundled recording — quantifies what "rattling" looks like
 statistically (spectral flux +57%, energy doubles above 2 kHz).
 
-![analysis](https://kjanat.github.io/engine-sound-splitter/analysis.png)
+![analysis](https://kjanat.github.io/engine-rattle-splitter/analysis.png)
 
 Same analysis run on the rattles stem validates the split — rattle
 energy is 2× louder before 13 s, with no engine-band content leaking
 through.
 
-![rattles analysis](https://kjanat.github.io/engine-sound-splitter/rattles_analysis.png)
+![rattles analysis](https://kjanat.github.io/engine-rattle-splitter/rattles_analysis.png)
