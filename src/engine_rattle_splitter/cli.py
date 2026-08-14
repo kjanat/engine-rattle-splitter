@@ -36,6 +36,7 @@ DEFAULT_SPLIT_AT = 13.0
 DEFAULT_ANALYSIS_PNG = Path("artifacts/analysis.png")
 DEFAULT_SPECTROGRAM_PNG = Path("artifacts/spectrogram.png")
 DEFAULT_MODULATION_PNG = Path("artifacts/modulation.png")
+DEFAULT_VIDEO_FPS = 119.88
 DEFAULT_SITE_DIR = Path("artifacts/site")
 DEFAULT_RECORDINGS_DIR = Path("recordings")
 DEFAULT_STYLESHEET = Path("web/site.css")
@@ -54,6 +55,7 @@ class Args(argparse.Namespace):
     order: int = DEFAULT_CROSSOVER_ORDER
     split_at: float = DEFAULT_SPLIT_AT
     rpm: float | None = None
+    video_fps: float | None = None
     output: Path = DEFAULT_ANALYSIS_PNG
     stylesheet: Path = DEFAULT_STYLESHEET
     favicon: Path = DEFAULT_FAVICON
@@ -118,6 +120,7 @@ def cmd_modulation(args: Args) -> int:
         sample_rate=args.sample_rate,
         output_png=args.output,
         rpm=args.rpm,
+        video_fps=args.video_fps,
         crossover_hz=args.crossover,
         filter_order=args.order,
     )
@@ -211,6 +214,7 @@ def cmd_site(args: Args) -> int:
             out / "modulation.png",
             args.crossover,
             args.order,
+            args.video_fps,
         ).result()
 
     input_copy = out / args.input.name
@@ -271,6 +275,7 @@ def _run_modulation(
     output_png: Path,
     crossover_hz: float,
     filter_order: int,
+    video_fps: float | None = None,
 ) -> None:
     output_png.unlink(missing_ok=True)
     try:
@@ -280,6 +285,7 @@ def _run_modulation(
             output_png=output_png,
             crossover_hz=crossover_hz,
             filter_order=filter_order,
+            video_fps=video_fps,
         )
     except modulation.InsufficientAudioError as error:
         print(f"skipped modulation: {error}")
@@ -512,6 +518,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="fixed engine speed used only to express peaks as shaft orders",
     )
     _ = mod.add_argument(
+        "--video-fps",
+        type=_positive_float,
+        default=None,
+        metavar="FPS",
+        help="classify peaks for video sampling without changing detection",
+    )
+    _ = mod.add_argument(
         "--crossover",
         type=float,
         default=DEFAULT_CROSSOVER_HZ,
@@ -592,6 +605,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_SPLIT_AT,
         metavar="SECONDS",
         help="time in seconds for analyze split (default: %(default)s)",
+    )
+    _ = st.add_argument(
+        "--video-fps",
+        type=_positive_float,
+        default=DEFAULT_VIDEO_FPS,
+        metavar="FPS",
+        help="video sampling reference shown on modulation plot (default: %(default)s)",
     )
     st.set_defaults(func=cmd_site)
 

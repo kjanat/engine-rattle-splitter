@@ -16,7 +16,7 @@ the defaults and lives under `recordings/`.
 uv run engine-rattle-splitter separate     [INPUT] [-o DIR] [--crossover HZ] [--order N]
 uv run engine-rattle-splitter analyze      [INPUT] [--split-at SECONDS] [-o OUT.png]
 uv run engine-rattle-splitter spectrogram  [INPUT] [-o OUT.png]
-uv run engine-rattle-splitter modulation   [INPUT] [--rpm RPM] [--crossover HZ] [--filter-order N] [-o OUT.png]
+uv run engine-rattle-splitter modulation   [INPUT] [--rpm RPM] [--video-fps FPS] [--crossover HZ] [--filter-order N] [-o OUT.png]
 ```
 
 Run any subcommand with `--help` for full option descriptions.
@@ -26,7 +26,7 @@ Run any subcommand with `--help` for full option descriptions.
 uv run engine-rattle-splitter separate recordings/ride.flac -o artifacts/stems --crossover 2000
 uv run engine-rattle-splitter analyze  recordings/ride.mp3 --split-at 5.2
 uv run engine-rattle-splitter spectrogram ~/audio/clip.opus
-uv run engine-rattle-splitter modulation recordings/steady-idle.wav --rpm 1800
+uv run engine-rattle-splitter modulation recordings/steady-idle.wav --rpm 1800 --video-fps 119.88
 
 # no INPUT → falls back to the bundled recording
 uv run engine-rattle-splitter separate
@@ -51,16 +51,23 @@ bundled file and likely need adjusting for other recordings:
 ## Rattle modulation
 
 `modulation` extracts the amplitude envelope of the high-band rattle signal
-and finds prominent 5–100 Hz modulation components. They may expose repeated
-impacts or bursts, but a broadband envelope can also contain beating between
-stationary tones. Treat the peaks as camera-frequency candidates, not proof of
-a mechanical source or the 2–16 kHz acoustic resonances excited by an impact.
+and shows both a time-resolved 5–100 Hz modulation map and prominent global
+components. They may expose repeated impacts or bursts, but a broadband
+envelope can also contain beating between stationary tones. Treat the peaks as
+camera-frequency candidates, not proof of a mechanical source or the 2–16 kHz
+acoustic resonances excited by an impact.
 
 When `--rpm` is supplied, each measured peak is also expressed as a fixed
 shaft-speed order: `order = frequency / (RPM / 60)`. RPM only changes this
 interpretation; it never changes the measured frequencies. Use it only for a
 near-steady-RPM clip. Acceleration and deceleration require synchronized,
 time-varying RPM data for proper order tracking.
+
+`--video-fps` adds presentation-only sampling guidance. Frequencies at or below
+one quarter of the frame rate have at least four frames per cycle; frequencies
+between that and the Nyquist limit (`FPS / 2`) are marginal, and frequencies at
+or above Nyquist cannot be matched unambiguously in ordinary frame-to-frame
+video. Detection remains entirely audio-derived.
 
 ## Listen / look
 

@@ -12,10 +12,13 @@ from engine_rattle_splitter.audio_io import Float32Array
 from engine_rattle_splitter.cli import _run_modulation
 from engine_rattle_splitter.modulation import (
     InsufficientAudioError,
+    _bin_edges,
+    _modulation_spectrogram,
     _resample_envelope,
     analyze,
     order_ratio,
     render,
+    video_observability,
 )
 
 SAMPLE_RATE = 12_000
@@ -31,6 +34,34 @@ def _am_signal(modulations: tuple[tuple[float, float], ...]) -> Float32Array:
     carrier = amplitude * np.sin(2.0 * np.pi * CARRIER_HZ * times)
     engine = 2.0 * np.sin(2.0 * np.pi * 300.0 * times)
     return (carrier + engine).astype(np.float32)
+
+
+def _changing_modulation_signal() -> Float32Array:
+    times = np.arange(round(SAMPLE_RATE * DURATION_S), dtype=np.float64) / SAMPLE_RATE
+    frequencies = np.where(times < 4.0, 20.0, np.where(times < 8.0, 35.0, 50.0))
+    phase = 2.0 * np.pi * np.cumsum(frequencies) / SAMPLE_RATE
+    amplitude = 1.0 + 0.8 * np.sin(phase)
+    carrier = amplitude * np.sin(2.0 * np.pi * CARRIER_HZ * times)
+    engine = 2.0 * np.sin(2.0 * np.pi * 300.0 * times)
+    return (carrier + engine).astype(np.float32)
+
+
+def _impact_train_signal() -> Float32Array:
+    sample_count = round(SAMPLE_RATE * DURATION_S)
+    times = np.arange(sample_count, dtype=np.float64) / SAMPLE_RATE
+    signal = 1.5 * np.sin(2.0 * np.pi * 300.0 * times)
+    rng = np.random.default_rng(42)
+    burst_times = np.arange(round(0.018 * SAMPLE_RATE), dtype=np.float64) / SAMPLE_RATE
+    burst = np.exp(-220.0 * burst_times) * (
+        rng.normal(size=len(burst_times))
+        + 0.8 * np.sin(2.0 * np.pi * 3_500.0 * burst_times)
+        + 0.6 * np.sin(2.0 * np.pi * 5_200.0 * burst_times)
+    )
+    period = round(SAMPLE_RATE / 25.0)
+    for start in range(2 * SAMPLE_RATE, 10 * SAMPLE_RATE, period):
+        end = min(start + len(burst), sample_count)
+        signal[start:end] += burst[: end - start]
+    return signal.astype(np.float32)
 
 
 class ModulationTests(unittest.TestCase):
@@ -71,6 +102,32 @@ class ModulationTests(unittest.TestCase):
             any(abs(peak.frequency_hz - 27.4) <= 0.15 for peak in result.peaks)
         )
 
+    def test_spectrogram_localizes_changing_modulation(self) -> None:
+        result = analyze(_changing_modulation_signal(), SAMPLE_RATE)
+
+        for time_s, expected_hz in ((2.0, 20.0), (6.0, 35.0), (10.0, 50.0)):
+            time_index = int(np.argmin(np.abs(result.spectrogram.times_s - time_s)))
+            frequency_index = int(np.argmax(result.spectrogram.psd_db[:, time_index]))
+            measured_hz = float(result.spectrogram.frequencies_hz[frequency_index])
+            with self.subTest(time_s=time_s):
+                self.assertAlmostEqual(measured_hz, expected_hz, delta=0.5)
+
+    def test_repeated_broadband_impacts_recover_event_rate(self) -> None:
+        result = analyze(_impact_train_signal(), SAMPLE_RATE)
+
+        self.assertTrue(
+            any(abs(peak.frequency_hz - 25.0) <= 0.15 for peak in result.peaks)
+        )
+        frequency_index = int(
+            np.argmin(np.abs(result.spectrogram.frequencies_hz - 25.0))
+        )
+        active_index = int(np.argmin(np.abs(result.spectrogram.times_s - 6.0)))
+        inactive_index = int(np.argmin(np.abs(result.spectrogram.times_s - 1.0)))
+        self.assertGreater(
+            float(result.spectrogram.psd_db[frequency_index, active_index]),
+            float(result.spectrogram.psd_db[frequency_index, inactive_index]) + 12.0,
+        )
+
     def test_silence_has_finite_result_without_peaks(self) -> None:
         samples = np.zeros(round(SAMPLE_RATE * 2.0), dtype=np.float32)
         result = analyze(samples, SAMPLE_RATE)
@@ -78,6 +135,41 @@ class ModulationTests(unittest.TestCase):
         self.assertEqual(result.peaks, ())
         self.assertTrue(bool(np.all(np.isfinite(result.envelope))))
         self.assertTrue(bool(np.all(np.isfinite(result.spectrum_db))))
+        self.assertTrue(bool(np.all(np.isfinite(result.spectrogram.psd_db))))
+
+    def test_one_second_clip_has_one_local_window(self) -> None:
+        times = np.arange(SAMPLE_RATE, dtype=np.float64) / SAMPLE_RATE
+        samples = (
+            (1.0 + 0.8 * np.sin(2.0 * np.pi * 30.0 * times))
+            * np.sin(2.0 * np.pi * CARRIER_HZ * times)
+        ).astype(np.float32)
+
+        result = analyze(samples, SAMPLE_RATE)
+
+        self.assertEqual(len(result.spectrogram.times_s), 1)
+        self.assertEqual(result.spectrogram.frequency_resolution_hz, 1.0)
+
+    def test_spectrogram_includes_end_aligned_window(self) -> None:
+        envelope = np.zeros(round(2.1 * 400), dtype=np.float64)
+        tail_times = np.arange(40, dtype=np.float64) / 400.0
+        envelope[-40:] = 1.0 + np.sin(2.0 * np.pi * 20.0 * tail_times)
+
+        spectrogram = _modulation_spectrogram(envelope)
+
+        self.assertEqual(len(spectrogram.times_s), 2)
+        self.assertAlmostEqual(float(spectrogram.times_s[-1]), 1.1)
+        frequency_index = int(np.argmin(np.abs(spectrogram.frequencies_hz - 20.0)))
+        self.assertGreater(
+            float(spectrogram.psd_db[frequency_index, -1]),
+            float(spectrogram.psd_db[frequency_index, 0]) + 20.0,
+        )
+
+    def test_nonuniform_spectrogram_times_have_explicit_edges(self) -> None:
+        centers = np.array([1.0, 1.0025], dtype=np.float64)
+
+        edges = _bin_edges(centers, 0.0, 2.0025)
+
+        np.testing.assert_allclose(edges, [0.99875, 1.00125, 1.00375])
 
     def test_resampling_preserves_constant_envelope_edges(self) -> None:
         envelope = np.ones(201, dtype=np.float64)
@@ -89,6 +181,12 @@ class ModulationTests(unittest.TestCase):
 
     def test_order_ratio_uses_fixed_crank_frequency(self) -> None:
         self.assertAlmostEqual(order_ratio(27.4, 1800.0), 27.4 / 30.0)
+
+    def test_video_observability_boundaries(self) -> None:
+        self.assertEqual(video_observability(30.0, 120.0), "well sampled")
+        self.assertEqual(video_observability(30.1, 120.0), "marginal")
+        self.assertEqual(video_observability(59.9, 120.0), "marginal")
+        self.assertEqual(video_observability(60.0, 120.0), "at or above Nyquist")
 
     def test_invalid_rpm_is_rejected(self) -> None:
         for rpm in (0.0, -1.0, math.nan, math.inf):
@@ -128,6 +226,7 @@ class ModulationTests(unittest.TestCase):
                 input_name="synthetic.wav",
                 output_png=output,
                 rpm=1800.0,
+                video_fps=119.88,
             )
 
             self.assertTrue(output.is_file())

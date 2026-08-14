@@ -367,11 +367,12 @@ def _render_modulation_section(artifact: Artifact | None) -> str:
         "\n      <h2>Rattle Modulation</h2>",
         (
             '      <p class="section-copy">The high-band amplitude envelope '
-            "reveals modulation components in Hz. They can arise from repeated "
-            "events or beating, and are not claimed engine orders without a "
-            "fixed RPM reference.</p>"
+            "shows when modulation components occur, their global spectrum, "
+            "and configured video sampling limits. Components can arise "
+            "from repeated events or beating; they are not claimed engine "
+            "orders without a fixed RPM reference.</p>"
         ),
-        _render_figure(artifact, "rattle-envelope modulation frequencies"),
+        _render_figure(artifact, "time-resolved rattle-envelope modulation"),
     ])
 
 
