@@ -13,7 +13,8 @@ class SiteBuilderTests(unittest.TestCase):
         rendered = _render_sections([artifact])
 
         self.assertIn("<h2>Rattle Modulation</h2>", rendered)
-        self.assertIn("modulation components in Hz", rendered)
+        self.assertIn("shows when modulation components occur", rendered)
+        self.assertIn("configured video sampling limits", rendered)
         self.assertNotIn("13 s mark", rendered)
 
 
