@@ -38,6 +38,8 @@ AUDIO_ORDER = (
 )
 IMAGE_ORDER = ("spectrogram.png", "analysis.png", "rattles_analysis.png")
 MODULATION_IMAGE = "modulation.png"
+FAULT_REPORT_FILE = "fault-report.json"
+CAMERA_TARGETS_FILE = "camera-targets.csv"
 RECORDING_SPECTROGRAM_PREFIX = "recording_spectrogram_"
 
 
@@ -272,13 +274,22 @@ def _render_sections(artifacts: list[Artifact]) -> str:
         and artifact.path.name != MODULATION_IMAGE
     ]
     modulation = _artifact_named(generic_artifacts, MODULATION_IMAGE)
-    files = [artifact for artifact in generic_artifacts if artifact.kind == "file"]
+    fault_report = _artifact_named(generic_artifacts, FAULT_REPORT_FILE)
+    camera_targets = _artifact_named(generic_artifacts, CAMERA_TARGETS_FILE)
+    modulation_files = {FAULT_REPORT_FILE, CAMERA_TARGETS_FILE}
+    consumed_modulation_files = modulation_files if modulation is not None else set()
+    files = [
+        artifact
+        for artifact in generic_artifacts
+        if artifact.kind == "file"
+        and artifact.path.name not in consumed_modulation_files
+    ]
 
     sections = [
         _render_audio_section(audio),
         _render_finding_section(finding_artifacts),
         _render_recording_spectrogram_section(recording_spectrograms),
-        _render_modulation_section(modulation),
+        _render_modulation_section(modulation, fault_report, camera_targets),
         _render_image_section(images),
         _render_file_section(files),
     ]
@@ -360,20 +371,36 @@ def _render_recording_spectrogram_section(artifacts: list[Artifact]) -> str:
     return "\n".join(rendered)
 
 
-def _render_modulation_section(artifact: Artifact | None) -> str:
+def _render_modulation_section(
+    artifact: Artifact | None,
+    fault_report: Artifact | None,
+    camera_targets: Artifact | None,
+) -> str:
     if artifact is None:
         return ""
-    return "\n".join([
+    rendered = [
         "\n      <h2>Rattle Modulation</h2>",
         (
             '      <p class="section-copy">The high-band amplitude envelope '
-            "shows when modulation components occur, their global spectrum, "
-            "and configured video sampling limits. Components can arise "
-            "from repeated events or beating; they are not claimed engine "
-            "orders without a fixed RPM reference.</p>"
+            "combines carrier-subband agreement, event timing, frequency "
+            "tracks, harmonic families, and configured video sampling limits. "
+            "Evidence scores rank corroboration; they are not causal "
+            "probabilities.</p>"
         ),
         _render_figure(artifact, "time-resolved rattle-envelope modulation"),
-    ])
+    ]
+    links = [
+        ("Download machine-readable evidence", fault_report),
+        ("Download camera targets", camera_targets),
+    ]
+    available = [
+        f'<a href="{_asset_url(item.path)}" download>{_e(label)}</a>'
+        for label, item in links
+        if item is not None
+    ]
+    if available:
+        rendered.append(f'      <p class="section-copy">{" | ".join(available)}</p>')
+    return "\n".join(rendered)
 
 
 def _recording_spectrogram_caption(artifact: Artifact) -> str:

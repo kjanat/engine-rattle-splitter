@@ -17,6 +17,7 @@ from .audio_io import Float32Array, decode
 from .filters import complementary_crossover
 
 type Float64Array = NDArray[np.float64]
+type BoolArray = NDArray[np.bool_]
 type AudioInputArray = NDArray[np.floating] | NDArray[np.complexfloating]
 type VideoObservability = Literal["well sampled", "marginal", "at or above Nyquist"]
 
@@ -210,6 +211,11 @@ def render(
     crossover_hz: float = DEFAULT_CROSSOVER_HZ,
     rpm: float | None = None,
     video_fps: float | None = None,
+    track_overlays: tuple[tuple[int, Float64Array, Float64Array], ...] = (),
+    event_times_s: tuple[float, ...] = (),
+    order_overlays: tuple[tuple[float, Float64Array, Float64Array], ...] = (),
+    order_map: tuple[Float64Array, Float64Array, Float64Array, BoolArray] | None = None,
+    subband_spectra: tuple[tuple[str, Float64Array, Float64Array, bool], ...] = (),
 ) -> None:
     """Render envelope, time-resolved modulation, and global spectrum."""
     if rpm is not None:
@@ -219,15 +225,16 @@ def render(
 
     fig: Figure
     axes_arr: NDArray[np.object_]
+    panel_count = 4 if order_map is not None else 3
     fig, axes_arr = plt.subplots(
-        3,
+        panel_count,
         1,
-        figsize=(14, 11),
+        figsize=(14, 14 if order_map is not None else 11),
         dpi=140,
         squeeze=False,
         layout="constrained",
     )
-    axes: list[Axes] = [axes_arr[index, 0] for index in range(3)]
+    axes: list[Axes] = [axes_arr[index, 0] for index in range(panel_count)]
 
     envelope_ax = axes[0]
     _ = envelope_ax.plot(
@@ -243,6 +250,8 @@ def render(
         f"Rattle-band analytic envelope (complementary high band above {crossover_hz:g} Hz)"
     )
     envelope_ax.grid(alpha=0.3)
+    for event_time_s in event_times_s:
+        _ = envelope_ax.axvline(event_time_s, color="tab:red", lw=0.35, alpha=0.16)
 
     spectrogram_ax = axes[1]
     spectrogram = result.spectrogram
@@ -297,14 +306,85 @@ def render(
             va="bottom",
             fontsize=8,
         )
+    for track_id, track_times, track_frequencies in track_overlays:
+        _ = spectrogram_ax.plot(
+            track_times,
+            track_frequencies,
+            color="white",
+            lw=1.2,
+            alpha=0.9,
+        )
+        if len(track_times) > 0:
+            _ = spectrogram_ax.text(
+                float(track_times[-1]),
+                float(track_frequencies[-1]),
+                f" T{track_id}",
+                color="white",
+                fontsize=7,
+                va="center",
+            )
+    for order, order_times, order_frequencies in order_overlays:
+        _ = spectrogram_ax.plot(
+            order_times,
+            order_frequencies,
+            color="cyan",
+            lw=0.7,
+            ls="--",
+            alpha=0.6,
+        )
+        if len(order_times) > 0:
+            _ = spectrogram_ax.text(
+                float(order_times[-1]),
+                float(order_frequencies[-1]),
+                f" {order:g}x",
+                color="cyan",
+                fontsize=6,
+                va="center",
+            )
 
-    spectrum_ax = axes[2]
+    if order_map is not None:
+        order_times, order_values, order_psd_db, order_valid = order_map
+        order_ax = axes[2]
+        order_image = order_ax.pcolormesh(
+            _bin_edges(order_times, 0.0, duration_s),
+            _bin_edges(
+                order_values,
+                float(order_values[0]),
+                float(order_values[-1]),
+            ),
+            np.ma.masked_where(~order_valid, order_psd_db),
+            shading="flat",
+            cmap="magma",
+            vmin=SPECTROGRAM_FLOOR_DB,
+            vmax=0.0,
+        )
+        _ = order_ax.set_xlim(0.0, duration_s)
+        _ = order_ax.set_ylim(float(order_values[0]), float(order_values[-1]))
+        _ = order_ax.set_xlabel("time (s)")
+        _ = order_ax.set_ylabel("shaft order")
+        _ = order_ax.set_title("RPM-normalized modulation order map")
+        _ = fig.colorbar(
+            order_image,
+            ax=order_ax,
+            label="PSD relative to global clip maximum (dB)",
+        )
+
+    spectrum_ax = axes[-1]
     _ = spectrum_ax.plot(
         result.frequencies_hz,
         result.spectrum_db,
         color="tab:red",
         lw=1.1,
+        label="broad high band",
     )
+    for label, frequencies, spectrum_db, informative in subband_spectra:
+        _ = spectrum_ax.plot(
+            frequencies,
+            spectrum_db,
+            lw=0.65,
+            alpha=0.45 if informative else 0.18,
+            label=label if informative else None,
+        )
     _ = spectrum_ax.set_xlim(MIN_MODULATION_HZ, MAX_MODULATION_HZ)
     _ = spectrum_ax.set_ylim(SPECTRUM_FLOOR_DB, 3.0)
     _ = spectrum_ax.set_xlabel("rattle modulation frequency (Hz)")
@@ -324,6 +404,8 @@ def render(
             spectrum_ax=spectrum_ax,
             video_fps=video_fps,
         )
+    elif subband_spectra:
+        _ = spectrum_ax.legend(loc="lower left", fontsize=7, ncols=2)
 
     for index, peak in enumerate(result.peaks):
         _ = spectrum_ax.axvline(

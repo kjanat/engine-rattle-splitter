@@ -207,6 +207,17 @@ class ModulationTests(unittest.TestCase):
 
         self.assertEqual(args.video_fps, DEFAULT_VIDEO_FPS)
 
+    def test_fixed_and_traced_rpm_are_mutually_exclusive(self) -> None:
+        with self.assertRaises(SystemExit):
+            _ = build_parser().parse_args([
+                "modulation",
+                "recording.wav",
+                "--rpm",
+                "1800",
+                "--rpm-trace",
+                "rpm.csv",
+            ])
+
     def test_invalid_rpm_is_rejected(self) -> None:
         for rpm in (0.0, -1.0, math.nan, math.inf):
             with self.subTest(rpm=rpm), self.assertRaises(ValueError):
@@ -256,7 +267,7 @@ class ModulationTests(unittest.TestCase):
             output = Path(directory) / "modulation.png"
             output.write_bytes(b"stale")
             with patch(
-                "engine_rattle_splitter.cli.modulation.run",
+                "engine_rattle_splitter.cli.localization.run",
                 side_effect=InsufficientAudioError("too short"),
             ):
                 _run_modulation(Path("short.wav"), 48_000, output, 1800.0, 4)
