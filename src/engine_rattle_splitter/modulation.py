@@ -15,6 +15,7 @@ from .audio_io import Float32Array, decode
 from .filters import complementary_crossover
 
 type Float64Array = NDArray[np.float64]
+type AudioInputArray = NDArray[np.floating] | NDArray[np.complexfloating]
 
 DEFAULT_CROSSOVER_HZ = 1800.0
 DEFAULT_FILTER_ORDER = 4
@@ -56,7 +57,7 @@ class InsufficientAudioError(ValueError):
 
 
 def analyze(
-    samples: Float32Array,
+    samples: AudioInputArray,
     sample_rate: int,
     *,
     crossover_hz: float = DEFAULT_CROSSOVER_HZ,
@@ -64,9 +65,10 @@ def analyze(
 ) -> ModulationResult:
     """Measure low-frequency amplitude modulation of the high-band signal."""
     _validate_input(samples, sample_rate, crossover_hz, filter_order)
+    real_samples: Float32Array = samples.astype(np.float32, copy=False)
 
-    pad_samples = min(sample_rate, len(samples) - 1)
-    padded: Float32Array = np.pad(samples, pad_samples, mode="reflect").astype(
+    pad_samples = min(sample_rate, len(real_samples) - 1)
+    padded: Float32Array = np.pad(real_samples, pad_samples, mode="reflect").astype(
         np.float32, copy=False
     )
     _, rattle = complementary_crossover(
@@ -339,7 +341,7 @@ def _detect_peaks(
 
 
 def _validate_input(
-    samples: Float32Array,
+    samples: AudioInputArray,
     sample_rate: int,
     crossover_hz: float,
     filter_order: int,
@@ -347,8 +349,14 @@ def _validate_input(
     if samples.ndim != 1:
         msg = "modulation analysis requires mono samples"
         raise ValueError(msg)
+    if np.iscomplexobj(samples):
+        msg = "audio samples must be real"
+        raise ValueError(msg)
     if sample_rate <= 0:
         msg = "sample rate must be positive"
+        raise ValueError(msg)
+    if sample_rate <= 2.0 * ENVELOPE_CUTOFF_HZ:
+        msg = "sample-rate Nyquist frequency must exceed the envelope cutoff"
         raise ValueError(msg)
     if not math.isfinite(crossover_hz) or crossover_hz <= 0.0:
         msg = "crossover frequency must be finite and positive"
