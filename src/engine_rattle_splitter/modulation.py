@@ -219,7 +219,14 @@ def render(
 
     fig: Figure
     axes_arr: NDArray[np.object_]
-    fig, axes_arr = plt.subplots(3, 1, figsize=(14, 11), dpi=140, squeeze=False)
+    fig, axes_arr = plt.subplots(
+        3,
+        1,
+        figsize=(14, 11),
+        dpi=140,
+        squeeze=False,
+        layout="constrained",
+    )
     axes: list[Axes] = [axes_arr[index, 0] for index in range(3)]
 
     envelope_ax = axes[0]
@@ -264,7 +271,11 @@ def render(
         f"{spectrogram.hop_duration_s:g} s hop, "
         f"{spectrogram.frequency_resolution_hz:g} Hz bins)"
     )
-    _ = fig.colorbar(image, ax=spectrogram_ax, label="relative local PSD (dB)")
+    _ = fig.colorbar(
+        image,
+        ax=spectrogram_ax,
+        label="PSD relative to global clip maximum (dB)",
+    )
     if bool(np.all(spectrogram.psd_db == SPECTROGRAM_FLOOR_DB)):
         _ = spectrogram_ax.text(
             0.5,
@@ -346,7 +357,6 @@ def render(
         )
 
     fig.suptitle(input_name)
-    fig.tight_layout()
     output_png.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_png, format="png")
     plt.close(fig)
@@ -446,7 +456,7 @@ def _mark_video_regions(
             alpha=0.12,
             label=span_label,
         )
-        if MIN_MODULATION_HZ < nyquist_hz:
+        if nyquist_hz > MIN_MODULATION_HZ:
             _ = spectrogram_ax.axhline(
                 nyquist_hz, color="cyan", lw=1.0, ls="--", alpha=0.9
             )

@@ -9,12 +9,18 @@ from unittest.mock import patch
 import numpy as np
 
 from engine_rattle_splitter.audio_io import Float32Array
-from engine_rattle_splitter.cli import _run_modulation
+from engine_rattle_splitter.cli import (
+    DEFAULT_VIDEO_FPS,
+    Args,
+    _run_modulation,
+    build_parser,
+)
 from engine_rattle_splitter.modulation import (
     InsufficientAudioError,
     _bin_edges,
     _modulation_spectrogram,
     _resample_envelope,
+    _validate_video_fps,
     analyze,
     order_ratio,
     render,
@@ -187,6 +193,19 @@ class ModulationTests(unittest.TestCase):
         self.assertEqual(video_observability(30.1, 120.0), "marginal")
         self.assertEqual(video_observability(59.9, 120.0), "marginal")
         self.assertEqual(video_observability(60.0, 120.0), "at or above Nyquist")
+
+    def test_invalid_video_inputs_are_rejected(self) -> None:
+        for video_fps in (0.0, -1.0, math.nan, math.inf):
+            with self.subTest(video_fps=video_fps), self.assertRaises(ValueError):
+                _validate_video_fps(video_fps)
+        for frequency_hz in (0.0, -1.0, math.nan, math.inf):
+            with self.subTest(frequency_hz=frequency_hz), self.assertRaises(ValueError):
+                _ = video_observability(frequency_hz, 120.0)
+
+    def test_site_uses_supported_video_fps_default(self) -> None:
+        args = build_parser().parse_args(["site"], namespace=Args())
+
+        self.assertEqual(args.video_fps, DEFAULT_VIDEO_FPS)
 
     def test_invalid_rpm_is_rejected(self) -> None:
         for rpm in (0.0, -1.0, math.nan, math.inf):

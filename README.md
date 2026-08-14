@@ -63,11 +63,15 @@ interpretation; it never changes the measured frequencies. Use it only for a
 near-steady-RPM clip. Acceleration and deceleration require synchronized,
 time-varying RPM data for proper order tracking.
 
-`--video-fps` adds presentation-only sampling guidance. Frequencies at or below
-one quarter of the frame rate have at least four frames per cycle; frequencies
-between that and the Nyquist limit (`FPS / 2`) are marginal, and frequencies at
-or above Nyquist cannot be matched unambiguously in ordinary frame-to-frame
-video. Detection remains entirely audio-derived.
+The CLI does not inspect video metadata. `modulation` adds presentation-only
+video guidance only when `--video-fps FPS` is explicitly supplied. Frequencies
+at or below one quarter of that frame rate have at least four frames per cycle;
+frequencies between that and the Nyquist limit (`FPS / 2`) are marginal, and
+frequencies at or above Nyquist cannot be matched unambiguously in ordinary
+frame-to-frame video. Detection remains entirely audio-derived.
+
+Only `site` defaults to 119.88 fps for the bundled EOS R7 experiment; override
+it with `site --video-fps FPS` for another capture rate.
 
 ## Listen / look
 
