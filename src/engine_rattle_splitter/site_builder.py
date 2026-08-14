@@ -37,6 +37,7 @@ AUDIO_ORDER = (
     "rattles.mp3",
 )
 IMAGE_ORDER = ("spectrogram.png", "analysis.png", "rattles_analysis.png")
+MODULATION_IMAGE = "modulation.png"
 RECORDING_SPECTROGRAM_PREFIX = "recording_spectrogram_"
 
 
@@ -266,14 +267,18 @@ def _render_sections(artifacts: list[Artifact]) -> str:
     images = [
         artifact
         for artifact in generic_artifacts
-        if artifact.kind == "image" and not _is_recording_spectrogram(artifact)
+        if artifact.kind == "image"
+        and not _is_recording_spectrogram(artifact)
+        and artifact.path.name != MODULATION_IMAGE
     ]
+    modulation = _artifact_named(generic_artifacts, MODULATION_IMAGE)
     files = [artifact for artifact in generic_artifacts if artifact.kind == "file"]
 
     sections = [
         _render_audio_section(audio),
         _render_finding_section(finding_artifacts),
         _render_recording_spectrogram_section(recording_spectrograms),
+        _render_modulation_section(modulation),
         _render_image_section(images),
         _render_file_section(files),
     ]
@@ -306,9 +311,11 @@ def _render_finding_section(artifacts: list[Artifact]) -> str:
         "\n      <h2>Notable Moment</h2>",
         '      <section class="finding">',
         "        <h3>Laatste stuk, 3:56-3:59</h3>",
-        "        <p>Broad high-frequency rattle: total level is slightly lower, "
-        "but the 2-24 kHz bands rise by about 1.8-3.0 dB. Peak is around "
-        "3:57.5-3:58.0.</p>",
+        (
+            "        <p>Broad high-frequency rattle: total level is slightly lower, "
+            "but the 2-24 kHz bands rise by about 1.8-3.0 dB. Peak is around "
+            "3:57.5-3:58.0.</p>"
+        ),
     ]
 
     for label, artifact in (
@@ -351,6 +358,21 @@ def _render_recording_spectrogram_section(artifacts: list[Artifact]) -> str:
             _render_figure(artifact, _recording_spectrogram_caption(artifact))
         )
     return "\n".join(rendered)
+
+
+def _render_modulation_section(artifact: Artifact | None) -> str:
+    if artifact is None:
+        return ""
+    return "\n".join([
+        "\n      <h2>Rattle Modulation</h2>",
+        (
+            '      <p class="section-copy">The high-band amplitude envelope '
+            "reveals modulation components in Hz. They can arise from repeated "
+            "events or beating, and are not claimed engine orders without a "
+            "fixed RPM reference.</p>"
+        ),
+        _render_figure(artifact, "rattle-envelope modulation frequencies"),
+    ])
 
 
 def _recording_spectrogram_caption(artifact: Artifact) -> str:
@@ -497,6 +519,12 @@ def _image_copy(artifact: Artifact) -> tuple[str, str, str]:
                 "Spectrogram",
                 _file_label(artifact),
                 "spectrogram of the original recording",
+            )
+        case "modulation.png":
+            return (
+                "Rattle modulation",
+                _file_label(artifact),
+                "rattle-envelope modulation frequencies",
             )
 
     title = _display_name(artifact.path)

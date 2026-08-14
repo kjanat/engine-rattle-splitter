@@ -1,5 +1,5 @@
 {
-	"extends": "https://raw.githubusercontent.com/kjanat/kjanat/HEAD/configs/dprint.remote.json",
+	"extends": "https://raw.githubusercontent.com/kjanat/kjanat/85bf2eb4/configs/dprint.remote.json",
 	"exec": {
 		"cwd": "${configDir}",
 		"commands": [
@@ -7,5 +7,7 @@
 		]
 	},
 	"excludes": ["**/*.lock"],
-	"plugins": ["https://plugins.dprint.dev/exec-0.7.2.json"]
+	"plugins": [
+		"https://plugins.dprint.dev/exec-0.7.3.json@a7898d5f1897e77bff474cec3d948c3ec3a7f455e32de2cc60c8adb9a5dd24aa"
+	]
 }
