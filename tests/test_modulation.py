@@ -90,11 +90,16 @@ class ModulationTests(unittest.TestCase):
         short = np.zeros(SAMPLE_RATE - 1, dtype=np.float32)
         non_finite = np.zeros(SAMPLE_RATE, dtype=np.float32)
         non_finite[0] = math.nan
+        complex_samples = np.zeros(SAMPLE_RATE, dtype=np.complex64)
 
         with self.assertRaises(InsufficientAudioError):
             _ = analyze(short, SAMPLE_RATE)
         with self.assertRaises(ValueError):
             _ = analyze(non_finite, SAMPLE_RATE)
+        with self.assertRaisesRegex(ValueError, "samples must be real"):
+            _ = analyze(complex_samples, SAMPLE_RATE)
+        with self.assertRaisesRegex(ValueError, "envelope cutoff"):
+            _ = analyze(np.zeros(200, dtype=np.float32), 200, crossover_hz=50.0)
         with self.assertRaises(ValueError):
             _ = analyze(np.zeros(SAMPLE_RATE, dtype=np.float32), 3_600)
 
