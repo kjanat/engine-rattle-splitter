@@ -12,6 +12,7 @@ from engine_rattle_splitter.audio_io import Float32Array
 from engine_rattle_splitter.cli import _run_modulation
 from engine_rattle_splitter.modulation import (
     InsufficientAudioError,
+    _resample_envelope,
     analyze,
     order_ratio,
     render,
@@ -78,6 +79,14 @@ class ModulationTests(unittest.TestCase):
         self.assertTrue(bool(np.all(np.isfinite(result.envelope))))
         self.assertTrue(bool(np.all(np.isfinite(result.spectrum_db))))
 
+    def test_resampling_preserves_constant_envelope_edges(self) -> None:
+        envelope = np.ones(201, dtype=np.float64)
+
+        resampled = _resample_envelope(envelope, sample_rate=201)
+
+        self.assertEqual(len(resampled), 400)
+        self.assertTrue(bool(np.allclose(resampled, 1.0, atol=0.001)))
+
     def test_order_ratio_uses_fixed_crank_frequency(self) -> None:
         self.assertAlmostEqual(order_ratio(27.4, 1800.0), 27.4 / 30.0)
 
@@ -91,6 +100,11 @@ class ModulationTests(unittest.TestCase):
         non_finite = np.zeros(SAMPLE_RATE, dtype=np.float32)
         non_finite[0] = math.nan
         complex_samples = np.zeros(SAMPLE_RATE, dtype=np.complex64)
+        outside_float32 = np.full(
+            SAMPLE_RATE,
+            np.float64(np.finfo(np.float32).max) * 2.0,
+            dtype=np.float64,
+        )
 
         with self.assertRaises(InsufficientAudioError):
             _ = analyze(short, SAMPLE_RATE)
@@ -98,6 +112,8 @@ class ModulationTests(unittest.TestCase):
             _ = analyze(non_finite, SAMPLE_RATE)
         with self.assertRaisesRegex(ValueError, "samples must be real"):
             _ = analyze(complex_samples, SAMPLE_RATE)
+        with self.assertRaisesRegex(ValueError, "after float32 conversion"):
+            _ = analyze(outside_float32, SAMPLE_RATE)
         with self.assertRaisesRegex(ValueError, "envelope cutoff"):
             _ = analyze(np.zeros(200, dtype=np.float32), 200, crossover_hz=50.0)
         with self.assertRaises(ValueError):
