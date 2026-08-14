@@ -16,6 +16,7 @@ the defaults and lives under `recordings/`.
 uv run engine-rattle-splitter separate     [INPUT] [-o DIR] [--crossover HZ] [--order N]
 uv run engine-rattle-splitter analyze      [INPUT] [--split-at SECONDS] [-o OUT.png]
 uv run engine-rattle-splitter spectrogram  [INPUT] [-o OUT.png]
+uv run engine-rattle-splitter modulation   [INPUT] [--rpm RPM] [--crossover HZ] [--filter-order N] [-o OUT.png]
 ```
 
 Run any subcommand with `--help` for full option descriptions.
@@ -25,6 +26,7 @@ Run any subcommand with `--help` for full option descriptions.
 uv run engine-rattle-splitter separate recordings/ride.flac -o artifacts/stems --crossover 2000
 uv run engine-rattle-splitter analyze  recordings/ride.mp3 --split-at 5.2
 uv run engine-rattle-splitter spectrogram ~/audio/clip.opus
+uv run engine-rattle-splitter modulation recordings/steady-idle.wav --rpm 1800
 
 # no INPUT → falls back to the bundled recording
 uv run engine-rattle-splitter separate
@@ -45,6 +47,20 @@ bundled file and likely need adjusting for other recordings:
   dividing the two halves it compares (e.g. rattling vs. not rattling).
   Meaningless if your recording has no such transition; pass the actual
   boundary in your file, or skip `analyze` entirely.
+
+## Rattle modulation
+
+`modulation` extracts the amplitude envelope of the high-band rattle signal
+and finds prominent 5–100 Hz modulation components. They may expose repeated
+impacts or bursts, but a broadband envelope can also contain beating between
+stationary tones. Treat the peaks as camera-frequency candidates, not proof of
+a mechanical source or the 2–16 kHz acoustic resonances excited by an impact.
+
+When `--rpm` is supplied, each measured peak is also expressed as a fixed
+shaft-speed order: `order = frequency / (RPM / 60)`. RPM only changes this
+interpretation; it never changes the measured frequencies. Use it only for a
+near-steady-RPM clip. Acceleration and deceleration require synchronized,
+time-varying RPM data for proper order tracking.
 
 ## Listen / look
 

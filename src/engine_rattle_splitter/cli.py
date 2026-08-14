@@ -4,9 +4,11 @@ Subcommands:
   separate     decode → crossover filter → write engine.wav + rattles.wav
   analyze      compute frame features and contrast before/after a time mark
   spectrogram  render a log-frequency dB spectrogram PNG
+  modulation   measure high-band envelope modulation components
 """
 
 import argparse
+import math
 import multiprocessing
 import os
 import shutil
@@ -18,6 +20,7 @@ from typing import Self
 
 from engine_rattle_splitter import (
     analysis,
+    modulation,
     moments,
     pipeline,
     site_builder,
@@ -32,6 +35,7 @@ DEFAULT_CROSSOVER_ORDER = 4
 DEFAULT_SPLIT_AT = 13.0
 DEFAULT_ANALYSIS_PNG = Path("artifacts/analysis.png")
 DEFAULT_SPECTROGRAM_PNG = Path("artifacts/spectrogram.png")
+DEFAULT_MODULATION_PNG = Path("artifacts/modulation.png")
 DEFAULT_SITE_DIR = Path("artifacts/site")
 DEFAULT_RECORDINGS_DIR = Path("recordings")
 DEFAULT_STYLESHEET = Path("web/site.css")
@@ -49,6 +53,7 @@ class Args(argparse.Namespace):
     crossover: float = DEFAULT_CROSSOVER_HZ
     order: int = DEFAULT_CROSSOVER_ORDER
     split_at: float = DEFAULT_SPLIT_AT
+    rpm: float | None = None
     output: Path = DEFAULT_ANALYSIS_PNG
     stylesheet: Path = DEFAULT_STYLESHEET
     favicon: Path = DEFAULT_FAVICON
@@ -100,6 +105,21 @@ def cmd_spectrogram(args: Args) -> int:
         input_path=args.input,
         sample_rate=args.sample_rate,
         output_png=args.output,
+    )
+    return 0
+
+
+def cmd_modulation(args: Args) -> int:
+    if not args.input.exists():
+        print(f"missing: {args.input}", file=sys.stderr)
+        return 1
+    _ = modulation.run(
+        input_path=args.input,
+        sample_rate=args.sample_rate,
+        output_png=args.output,
+        rpm=args.rpm,
+        crossover_hz=args.crossover,
+        filter_order=args.order,
     )
     return 0
 
@@ -184,6 +204,14 @@ def cmd_site(args: Args) -> int:
             output_dir=out,
         )
         _finish(futures)
+        pool.submit(
+            _run_modulation,
+            args.input,
+            args.sample_rate,
+            out / "modulation.png",
+            args.crossover,
+            args.order,
+        ).result()
 
     input_copy = out / args.input.name
     _ = shutil.copy(args.input, input_copy)
@@ -235,6 +263,26 @@ def _run_analysis(
         split_at=split_at,
         output_png=output_png,
     )
+
+
+def _run_modulation(
+    input_path: Path,
+    sample_rate: int,
+    output_png: Path,
+    crossover_hz: float,
+    filter_order: int,
+) -> None:
+    output_png.unlink(missing_ok=True)
+    try:
+        _ = modulation.run(
+            input_path=input_path,
+            sample_rate=sample_rate,
+            output_png=output_png,
+            crossover_hz=crossover_hz,
+            filter_order=filter_order,
+        )
+    except modulation.InsufficientAudioError as error:
+        print(f"skipped modulation: {error}")
 
 
 def _run_moments(output_dir: Path, sample_rate: int) -> None:
@@ -295,6 +343,14 @@ def _slug(value: str) -> str:
     return "".join(chars).strip("_") or "recording"
 
 
+def _positive_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed <= 0.0:
+        msg = "must be finite and greater than zero"
+        raise argparse.ArgumentTypeError(msg)
+    return parsed
+
+
 INPUT_HELP = (
     "audio input file — any format ffmpeg can decode "
     "(wav, mp3, m4a, flac, ogg, opus, mp4 audio, ...). "
@@ -314,7 +370,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Examples:\n"
             "  engine-rattle-splitter separate recordings/ride.flac -o artifacts/stems --crossover 2000\n"
             "  engine-rattle-splitter analyze  recordings/ride.flac --split-at 5.2\n"
-            "  engine-rattle-splitter spectrogram recordings/ride.flac"
+            "  engine-rattle-splitter spectrogram recordings/ride.flac\n"
+            "  engine-rattle-splitter modulation recordings/steady.wav --rpm 1800"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -432,6 +489,52 @@ def build_parser() -> argparse.ArgumentParser:
         help="PNG output path (default: %(default)s)",
     )
     sg.set_defaults(func=cmd_spectrogram)
+
+    mod = sub.add_parser(
+        "modulation",
+        help="measure high-band envelope modulation frequencies",
+        description=(
+            "Extract the analytic amplitude envelope of the complementary "
+            "high-band rattle signal, then report prominent 5-100 Hz envelope "
+            "modulation frequencies. Components may reflect repeated events "
+            "or beating between tones. With --rpm, also express each measured "
+            "frequency as a fixed shaft-speed order; RPM never changes the measurement."
+        ),
+    )
+    _ = mod.add_argument(
+        "input", type=Path, nargs="?", default=DEFAULT_INPUT, help=INPUT_HELP
+    )
+    _ = mod.add_argument(
+        "--rpm",
+        type=_positive_float,
+        default=None,
+        metavar="RPM",
+        help="fixed engine speed used only to express peaks as shaft orders",
+    )
+    _ = mod.add_argument(
+        "--crossover",
+        type=float,
+        default=DEFAULT_CROSSOVER_HZ,
+        metavar="HZ",
+        help="rattle-band crossover frequency in Hz (default: %(default)s)",
+    )
+    _ = mod.add_argument(
+        "--filter-order",
+        dest="order",
+        type=int,
+        default=DEFAULT_CROSSOVER_ORDER,
+        metavar="N",
+        help="Butterworth crossover filter order (default: %(default)s)",
+    )
+    _ = mod.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=DEFAULT_MODULATION_PNG,
+        metavar="PNG",
+        help="PNG output path (default: %(default)s)",
+    )
+    mod.set_defaults(func=cmd_modulation)
 
     st = sub.add_parser(
         "site",
