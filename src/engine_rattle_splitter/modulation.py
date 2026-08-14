@@ -65,7 +65,11 @@ def analyze(
 ) -> ModulationResult:
     """Measure low-frequency amplitude modulation of the high-band signal."""
     _validate_input(samples, sample_rate, crossover_hz, filter_order)
-    real_samples: Float32Array = samples.astype(np.float32, copy=False)
+    with np.errstate(over="ignore", invalid="ignore"):
+        real_samples: Float32Array = samples.astype(np.float32, copy=False)
+    if not bool(np.all(np.isfinite(real_samples))):
+        msg = "audio samples must remain finite after float32 conversion"
+        raise ValueError(msg)
 
     pad_samples = min(sample_rate, len(real_samples) - 1)
     padded: Float32Array = np.pad(real_samples, pad_samples, mode="reflect").astype(
@@ -91,12 +95,7 @@ def analyze(
     envelope = smoothed[pad_samples:-pad_samples]
     envelope = np.maximum(envelope, 0.0).astype(np.float64)
 
-    divisor = math.gcd(sample_rate, ENVELOPE_SAMPLE_RATE)
-    envelope = resample_poly(
-        envelope,
-        ENVELOPE_SAMPLE_RATE // divisor,
-        sample_rate // divisor,
-    ).astype(np.float64)
+    envelope = _resample_envelope(envelope, sample_rate)
     envelope = np.maximum(envelope, 0.0).astype(np.float64)
     times: Float64Array = np.arange(len(envelope), dtype=np.float64) / float(
         ENVELOPE_SAMPLE_RATE
@@ -117,6 +116,16 @@ def analyze(
         peaks=peaks,
         frequency_resolution_hz=resolution,
     )
+
+
+def _resample_envelope(envelope: Float64Array, sample_rate: int) -> Float64Array:
+    divisor = math.gcd(sample_rate, ENVELOPE_SAMPLE_RATE)
+    return resample_poly(
+        envelope,
+        ENVELOPE_SAMPLE_RATE // divisor,
+        sample_rate // divisor,
+        padtype="line",
+    ).astype(np.float64)
 
 
 def order_ratio(frequency_hz: float, rpm: float) -> float:
