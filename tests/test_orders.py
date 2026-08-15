@@ -113,7 +113,8 @@ class OrderTests(unittest.TestCase):
 
         self.assertLessEqual(float(high_rpm.order_map.orders[0]), 0.05)
         self.assertGreaterEqual(float(low_rpm.order_map.orders[-1]), 100.0)
-        self.assertLessEqual(len(low_rpm.order_map.orders), 400)
+        self.assertEqual(len(low_rpm.order_map.orders), 400)
+        self.assertGreater(low_rpm.order_map.order_resolution, 0.05)
         self.assertAlmostEqual(
             low_rpm.order_map.order_resolution,
             float(low_rpm.order_map.orders[1] - low_rpm.order_map.orders[0]),

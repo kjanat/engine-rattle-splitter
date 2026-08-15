@@ -435,7 +435,7 @@ def _track_evidence(
         persistence = sorted(
             (support.persistence for support in supports), reverse=True
         )
-        top_two = (persistence + [0.0, 0.0])[:2]
+        top_two = [*persistence, 0.0, 0.0][:2]
         cross_support = frame_coverage * sum(top_two) / 2.0
         event_score = (
             event_support.phase_locking * event_support.one_cycle_interval_fraction

@@ -644,8 +644,8 @@ def modulation_spectrogram(envelope: Float64Array) -> ModulationSpectrogram:
     ])
     detrended = frames - np.mean(frames, axis=1, keepdims=True)
     window: Float64Array = hann(window_samples, sym=False).astype(np.float64)
-    spectrum = np.fft.rfft(detrended * window, axis=1)
-    power = np.square(np.abs(spectrum)) / (
+    spectrum_values = np.fft.rfft(detrended * window, axis=1)
+    power = np.square(np.abs(spectrum_values)) / (
         ENVELOPE_SAMPLE_RATE * float(np.sum(np.square(window)))
     )
     if window_samples % 2 == 0:

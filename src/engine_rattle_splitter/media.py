@@ -43,6 +43,7 @@ class TimelineAlignment:
 
 def probe_video(path: Path) -> VideoMetadata:
     """Read first-video-stream timing without decoding video frames."""
+    probe_path = path.resolve()
     command = [
         "ffprobe",
         "-v",
@@ -53,8 +54,7 @@ def probe_video(path: Path) -> VideoMetadata:
         "stream=avg_frame_rate,r_frame_rate,time_base,duration,nb_frames",
         "-of",
         "default=noprint_wrappers=1",
-        "--",
-        str(path),
+        str(probe_path),
     ]
     output = subprocess.run(
         command,

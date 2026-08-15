@@ -16,6 +16,7 @@ from engine_rattle_splitter.media import (
 
 class MediaTests(unittest.TestCase):
     def test_parses_rational_video_metadata(self) -> None:
+        path = Path("bike.mp4")
         output = (
             "avg_frame_rate=30000/1001\n"
             "r_frame_rate=30/1\n"
@@ -26,9 +27,27 @@ class MediaTests(unittest.TestCase):
         with patch(
             "engine_rattle_splitter.media.subprocess.run",
             return_value=SimpleNamespace(stdout=output),
-        ):
-            metadata = probe_video(Path("bike.mp4"))
+        ) as run:
+            metadata = probe_video(path)
 
+        run.assert_called_once_with(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=avg_frame_rate,r_frame_rate,time_base,duration,nb_frames",
+                "-of",
+                "default=noprint_wrappers=1",
+                str(path.resolve()),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         self.assertAlmostEqual(metadata.average_fps, 30_000 / 1_001)
         self.assertTrue(metadata.warnings)
         override = resolve_capture_rate(metadata, 119.88)
