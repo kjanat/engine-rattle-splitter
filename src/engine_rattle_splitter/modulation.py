@@ -17,6 +17,7 @@ from .audio_io import Float32Array, decode
 from .filters import complementary_crossover
 
 type Float64Array = NDArray[np.float64]
+type BoolArray = NDArray[np.bool_]
 type AudioInputArray = NDArray[np.floating] | NDArray[np.complexfloating]
 type VideoObservability = Literal["well sampled", "marginal", "at or above Nyquist"]
 
@@ -114,15 +115,15 @@ def analyze(
     envelope = smoothed[pad_samples:-pad_samples]
     envelope = np.maximum(envelope, 0.0).astype(np.float64)
 
-    envelope = _resample_envelope(envelope, sample_rate)
+    envelope = resample_envelope(envelope, sample_rate)
     envelope = np.maximum(envelope, 0.0).astype(np.float64)
     times: Float64Array = np.arange(len(envelope), dtype=np.float64) / float(
         ENVELOPE_SAMPLE_RATE
     )
 
-    spectrum_frequencies, full_spectrum_db, resolution = _spectrum(envelope)
-    spectrogram = _modulation_spectrogram(envelope)
-    peaks = _detect_peaks(spectrum_frequencies, full_spectrum_db, resolution)
+    spectrum_frequencies, full_spectrum_db, resolution = spectrum(envelope)
+    spectrogram = modulation_spectrogram(envelope)
+    peaks = detect_peaks(spectrum_frequencies, full_spectrum_db, resolution)
     output_band = (spectrum_frequencies >= MIN_MODULATION_HZ) & (
         spectrum_frequencies <= MAX_MODULATION_HZ
     )
@@ -139,7 +140,8 @@ def analyze(
     )
 
 
-def _resample_envelope(envelope: Float64Array, sample_rate: int) -> Float64Array:
+def resample_envelope(envelope: Float64Array, sample_rate: int) -> Float64Array:
+    """Resample an envelope to the shared modulation analysis rate."""
     divisor = math.gcd(sample_rate, ENVELOPE_SAMPLE_RATE)
     return resample_poly(
         envelope,
@@ -210,6 +212,13 @@ def render(
     crossover_hz: float = DEFAULT_CROSSOVER_HZ,
     rpm: float | None = None,
     video_fps: float | None = None,
+    track_overlays: tuple[tuple[int, Float64Array, Float64Array], ...] = (),
+    event_times_s: tuple[float, ...] = (),
+    order_overlays: tuple[tuple[float, Float64Array, Float64Array], ...] = (),
+    order_map: (
+        tuple[Float64Array, Float64Array, float, Float64Array, BoolArray] | None
+    ) = None,
+    subband_spectra: tuple[tuple[str, Float64Array, Float64Array, bool], ...] = (),
 ) -> None:
     """Render envelope, time-resolved modulation, and global spectrum."""
     if rpm is not None:
@@ -219,15 +228,16 @@ def render(
 
     fig: Figure
     axes_arr: NDArray[np.object_]
+    panel_count = 4 if order_map is not None else 3
     fig, axes_arr = plt.subplots(
-        3,
+        panel_count,
         1,
-        figsize=(14, 11),
+        figsize=(14, 14 if order_map is not None else 11),
         dpi=140,
         squeeze=False,
         layout="constrained",
     )
-    axes: list[Axes] = [axes_arr[index, 0] for index in range(3)]
+    axes: list[Axes] = [axes_arr[index, 0] for index in range(panel_count)]
 
     envelope_ax = axes[0]
     _ = envelope_ax.plot(
@@ -243,6 +253,8 @@ def render(
         f"Rattle-band analytic envelope (complementary high band above {crossover_hz:g} Hz)"
     )
     envelope_ax.grid(alpha=0.3)
+    for event_time_s in event_times_s:
+        _ = envelope_ax.axvline(event_time_s, color="tab:red", lw=0.35, alpha=0.16)
 
     spectrogram_ax = axes[1]
     spectrogram = result.spectrogram
@@ -297,14 +309,101 @@ def render(
             va="bottom",
             fontsize=8,
         )
+    for track_id, track_times, track_frequencies in track_overlays:
+        _ = spectrogram_ax.plot(
+            track_times,
+            track_frequencies,
+            color="white",
+            lw=1.2,
+            alpha=0.9,
+        )
+        if (
+            len(track_times) > 0
+            and MIN_MODULATION_HZ <= float(track_frequencies[-1]) <= MAX_MODULATION_HZ
+        ):
+            _ = spectrogram_ax.text(
+                float(track_times[-1]),
+                float(track_frequencies[-1]),
+                f" T{track_id}",
+                color="white",
+                fontsize=7,
+                va="center",
+                clip_on=True,
+            )
+    for order, order_times, order_frequencies in order_overlays:
+        _ = spectrogram_ax.plot(
+            order_times,
+            order_frequencies,
+            color="cyan",
+            lw=0.7,
+            ls="--",
+            alpha=0.6,
+        )
+        if (
+            len(order_times) > 0
+            and MIN_MODULATION_HZ <= float(order_frequencies[-1]) <= MAX_MODULATION_HZ
+        ):
+            _ = spectrogram_ax.text(
+                float(order_times[-1]),
+                float(order_frequencies[-1]),
+                f" {order:g}x",
+                color="cyan",
+                fontsize=6,
+                va="center",
+                clip_on=True,
+            )
 
-    spectrum_ax = axes[2]
+    if order_map is not None:
+        (
+            order_times,
+            order_values,
+            order_resolution,
+            order_psd_db,
+            order_valid,
+        ) = order_map
+        order_ax = axes[2]
+        order_image = order_ax.pcolormesh(
+            _bin_edges(order_times, 0.0, duration_s),
+            _bin_edges(
+                order_values,
+                float(order_values[0]),
+                float(order_values[-1]),
+            ),
+            np.ma.masked_where(~order_valid, order_psd_db),
+            shading="flat",
+            cmap="magma",
+            vmin=SPECTROGRAM_FLOOR_DB,
+            vmax=0.0,
+        )
+        _ = order_ax.set_xlim(0.0, duration_s)
+        _ = order_ax.set_ylim(float(order_values[0]), float(order_values[-1]))
+        _ = order_ax.set_xlabel("time (s)")
+        _ = order_ax.set_ylabel("shaft order")
+        _ = order_ax.set_title(
+            f"RPM-normalized modulation order map ({order_resolution:.3g}x bins)"
+        )
+        _ = fig.colorbar(
+            order_image,
+            ax=order_ax,
+            label="PSD relative to global clip maximum (dB)",
+        )
+
+    spectrum_ax = axes[-1]
     _ = spectrum_ax.plot(
         result.frequencies_hz,
         result.spectrum_db,
         color="tab:red",
         lw=1.1,
+        label="broad high band",
     )
+    for label, frequencies, spectrum_db, informative in subband_spectra:
+        _ = spectrum_ax.plot(
+            frequencies,
+            spectrum_db,
+            lw=0.65,
+            alpha=0.45 if informative else 0.18,
+            label=label if informative else None,
+        )
     _ = spectrum_ax.set_xlim(MIN_MODULATION_HZ, MAX_MODULATION_HZ)
     _ = spectrum_ax.set_ylim(SPECTRUM_FLOOR_DB, 3.0)
     _ = spectrum_ax.set_xlabel("rattle modulation frequency (Hz)")
@@ -324,6 +423,8 @@ def render(
             spectrum_ax=spectrum_ax,
             video_fps=video_fps,
         )
+    if video_fps is not None or subband_spectra:
+        _ = spectrum_ax.legend(loc="lower left", fontsize=7, ncols=2)
 
     for index, peak in enumerate(result.peaks):
         _ = spectrum_ax.axvline(
@@ -425,7 +526,6 @@ def _mark_video_regions(
 ) -> None:
     four_frame_limit = video_fps / 4.0
     nyquist_hz = video_fps / 2.0
-    has_legend_entry = False
     if MIN_MODULATION_HZ < four_frame_limit < MAX_MODULATION_HZ:
         _ = spectrogram_ax.axhline(
             four_frame_limit, color="cyan", lw=0.8, ls=":", alpha=0.8
@@ -438,7 +538,6 @@ def _mark_video_regions(
             alpha=0.8,
             label=f"4 frames/cycle ({four_frame_limit:.2f} Hz)",
         )
-        has_legend_entry = True
     if nyquist_hz < MAX_MODULATION_HZ:
         shade_start_hz = max(MIN_MODULATION_HZ, nyquist_hz)
         _ = spectrogram_ax.axhspan(
@@ -468,9 +567,6 @@ def _mark_video_regions(
                 alpha=0.8,
                 label=f"video Nyquist ({nyquist_hz:.2f} Hz)",
             )
-        has_legend_entry = True
-    if has_legend_entry:
-        _ = spectrum_ax.legend(loc="lower left", fontsize=8)
 
 
 def _recommended_motion_band(
@@ -496,9 +592,10 @@ def _bin_edges(
     )
 
 
-def _spectrum(
+def spectrum(
     envelope: Float64Array,
 ) -> tuple[Float64Array, Float64Array, float]:
+    """Return the bounded relative Welch spectrum and achieved resolution."""
     nperseg = min(len(envelope), round(WELCH_SEGMENT_S * ENVELOPE_SAMPLE_RATE))
     frequencies, power = welch(
         envelope,
@@ -527,7 +624,8 @@ def _spectrum(
     return frequencies, spectrum_db, resolution
 
 
-def _modulation_spectrogram(envelope: Float64Array) -> ModulationSpectrogram:
+def modulation_spectrogram(envelope: Float64Array) -> ModulationSpectrogram:
+    """Build the shared time-resolved modulation PSD representation."""
     window_samples = min(
         len(envelope), round(SPECTROGRAM_WINDOW_S * ENVELOPE_SAMPLE_RATE)
     )
@@ -546,8 +644,8 @@ def _modulation_spectrogram(envelope: Float64Array) -> ModulationSpectrogram:
     ])
     detrended = frames - np.mean(frames, axis=1, keepdims=True)
     window: Float64Array = hann(window_samples, sym=False).astype(np.float64)
-    spectrum = np.fft.rfft(detrended * window, axis=1)
-    power = np.square(np.abs(spectrum)) / (
+    spectrum_values = np.fft.rfft(detrended * window, axis=1)
+    power = np.square(np.abs(spectrum_values)) / (
         ENVELOPE_SAMPLE_RATE * float(np.sum(np.square(window)))
     )
     if window_samples % 2 == 0:
@@ -583,11 +681,12 @@ def _relative_db(power: Float64Array, floor_db: float) -> Float64Array:
     return (10.0 * np.log10(np.maximum(power, floor) / max_power)).astype(np.float64)
 
 
-def _detect_peaks(
+def detect_peaks(
     frequencies: Float64Array,
     spectrum_db: Float64Array,
     resolution_hz: float,
 ) -> tuple[ModulationPeak, ...]:
+    """Select prominent modulation peaks inside the configured search band."""
     distance = max(1, math.ceil(PEAK_SEPARATION_HZ / resolution_hz))
     indices, properties = find_peaks(
         spectrum_db,

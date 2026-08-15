@@ -20,8 +20,10 @@ from typing import Self
 
 from engine_rattle_splitter import (
     analysis,
+    localization,
     modulation,
     moments,
+    orders,
     pipeline,
     site_builder,
     spectrogram,
@@ -36,6 +38,9 @@ DEFAULT_SPLIT_AT = 13.0
 DEFAULT_ANALYSIS_PNG = Path("artifacts/analysis.png")
 DEFAULT_SPECTROGRAM_PNG = Path("artifacts/spectrogram.png")
 DEFAULT_MODULATION_PNG = Path("artifacts/modulation.png")
+DEFAULT_FAULT_REPORT_JSON = "fault-report.json"
+DEFAULT_CAMERA_TARGETS_CSV = "camera-targets.csv"
+DEFAULT_REFERENCE_ORDERS = orders.DEFAULT_REFERENCE_ORDERS
 DEFAULT_VIDEO_FPS = 119.88
 DEFAULT_SITE_DIR = Path("artifacts/site")
 DEFAULT_RECORDINGS_DIR = Path("recordings")
@@ -55,7 +60,14 @@ class Args(argparse.Namespace):
     order: int = DEFAULT_CROSSOVER_ORDER
     split_at: float = DEFAULT_SPLIT_AT
     rpm: float | None = None
+    rpm_trace: Path | None = None
+    orders: tuple[float, ...] = DEFAULT_REFERENCE_ORDERS
     video_fps: float | None = None
+    video: Path | None = None
+    video_start_offset: float | None = None
+    control: Path | None = None
+    json_output: Path | None = None
+    camera_target: Path | None = None
     output: Path = DEFAULT_ANALYSIS_PNG
     stylesheet: Path = DEFAULT_STYLESHEET
     favicon: Path = DEFAULT_FAVICON
@@ -115,12 +127,23 @@ def cmd_modulation(args: Args) -> int:
     if not args.input.exists():
         print(f"missing: {args.input}", file=sys.stderr)
         return 1
-    _ = modulation.run(
+    for optional_path in (args.control, args.rpm_trace, args.video):
+        if optional_path is not None and not optional_path.exists():
+            print(f"missing: {optional_path}", file=sys.stderr)
+            return 1
+    _ = localization.run(
         input_path=args.input,
         sample_rate=args.sample_rate,
         output_png=args.output,
         rpm=args.rpm,
-        video_fps=args.video_fps,
+        rpm_trace_path=args.rpm_trace,
+        reference_orders=args.orders,
+        control_path=args.control,
+        video_path=args.video,
+        capture_fps=args.video_fps,
+        video_start_offset_s=args.video_start_offset,
+        json_output=args.json_output,
+        camera_target_output=args.camera_target,
         crossover_hz=args.crossover,
         filter_order=args.order,
     )
@@ -277,15 +300,22 @@ def _run_modulation(
     filter_order: int,
     video_fps: float | None = None,
 ) -> None:
+    json_output = output_png.with_name(DEFAULT_FAULT_REPORT_JSON)
+    camera_target_output = output_png.with_name(DEFAULT_CAMERA_TARGETS_CSV)
     output_png.unlink(missing_ok=True)
+    json_output.unlink(missing_ok=True)
+    camera_target_output.unlink(missing_ok=True)
     try:
-        _ = modulation.run(
+        _ = localization.run(
             input_path=input_path,
             sample_rate=sample_rate,
             output_png=output_png,
             crossover_hz=crossover_hz,
             filter_order=filter_order,
-            video_fps=video_fps,
+            reference_orders=Args.orders,
+            capture_fps=video_fps,
+            json_output=json_output,
+            camera_target_output=camera_target_output,
         )
     except modulation.InsufficientAudioError as error:
         print(f"skipped modulation: {error}")
@@ -355,6 +385,26 @@ def _positive_float(value: str) -> float:
         msg = "must be finite and greater than zero"
         raise argparse.ArgumentTypeError(msg)
     return parsed
+
+
+def _finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        msg = "must be finite"
+        raise argparse.ArgumentTypeError(msg)
+    return parsed
+
+
+def _order_list(value: str) -> tuple[float, ...]:
+    try:
+        orders = tuple(float(item) for item in value.split(","))
+    except ValueError as error:
+        msg = "must be comma-separated numbers"
+        raise argparse.ArgumentTypeError(msg) from error
+    if not orders or any(not math.isfinite(order) or order <= 0.0 for order in orders):
+        msg = "orders must be finite and positive"
+        raise argparse.ArgumentTypeError(msg)
+    return orders
 
 
 INPUT_HELP = (
@@ -510,19 +560,72 @@ def build_parser() -> argparse.ArgumentParser:
     _ = mod.add_argument(
         "input", type=Path, nargs="?", default=DEFAULT_INPUT, help=INPUT_HELP
     )
-    _ = mod.add_argument(
+    rpm_group = mod.add_mutually_exclusive_group()
+    _ = rpm_group.add_argument(
         "--rpm",
         type=_positive_float,
         default=None,
         metavar="RPM",
         help="fixed engine speed used only to express peaks as shaft orders",
     )
+    _ = rpm_group.add_argument(
+        "--rpm-trace",
+        type=Path,
+        default=None,
+        metavar="CSV",
+        help="time-varying media-relative RPM measurements (time_s,rpm)",
+    )
     _ = mod.add_argument(
+        "--orders",
+        type=_order_list,
+        default=DEFAULT_REFERENCE_ORDERS,
+        metavar="LIST",
+        help="comma-separated order references (default: 0.5,1,1.5,2,3,4)",
+    )
+    _ = mod.add_argument(
+        "--capture-fps",
         "--video-fps",
+        dest="video_fps",
         type=_positive_float,
         default=None,
         metavar="FPS",
-        help="classify peaks for video sampling without changing detection",
+        help="physical capture FPS override used for camera guidance",
+    )
+    _ = mod.add_argument(
+        "--video",
+        type=Path,
+        default=None,
+        metavar="VIDEO",
+        help="probe video timing and align its audio track with the input",
+    )
+    _ = mod.add_argument(
+        "--video-start-offset",
+        type=_finite_float,
+        default=None,
+        metavar="SECONDS",
+        help="explicit timeline mapping: video_time = audio_time + offset",
+    )
+    _ = mod.add_argument(
+        "--control",
+        type=Path,
+        default=None,
+        metavar="AUDIO",
+        help="comparable rattle-free recording for candidate contrast",
+    )
+    _ = mod.add_argument(
+        "--json",
+        dest="json_output",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="write machine-readable diagnostic summary",
+    )
+    _ = mod.add_argument(
+        "--camera-target",
+        type=Path,
+        default=None,
+        metavar="CSV",
+        help="write time-varying motion-magnification targets",
     )
     _ = mod.add_argument(
         "--crossover",
