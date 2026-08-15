@@ -7,7 +7,6 @@ from pathlib import Path
 import numpy as np
 
 from engine_rattle_splitter.fault_diagnostics import FrequencyTrack, RidgePoint
-from engine_rattle_splitter.localization import _orders_json
 from engine_rattle_splitter.modulation import ModulationSpectrogram
 from engine_rattle_splitter.orders import (
     RpmPoint,
@@ -36,6 +35,21 @@ class OrderTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "strictly increasing"):
                 _ = load_rpm_trace(path)
+
+    def test_rejects_other_invalid_rpm_csv_shapes(self) -> None:
+        cases = (
+            ("time,rpm\n0,1000\n1,1200\n", "exactly the columns"),
+            ("time_s,rpm\n0,0\n1,1200\n", "finite and positive"),
+            ("time_s,rpm\n0,nope\n1,1200\n", "invalid RPM trace row"),
+            ("time_s,rpm\n0,1000\n", "at least two points"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rpm.csv"
+            for contents, message in cases:
+                with self.subTest(message=message):
+                    path.write_text(contents, encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, message):
+                        _ = load_rpm_trace(path)
 
     def test_fits_known_two_x_order(self) -> None:
         times = np.arange(0.0, 5.25, 0.25, dtype=np.float64)
@@ -82,10 +96,6 @@ class OrderTests(unittest.TestCase):
         self.assertTrue(
             bool(np.all(analysis.order_map.valid[ridge, np.arange(len(times))]))
         )
-        payload = _orders_json(analysis)
-        self.assertIsInstance(payload, dict)
-        if isinstance(payload, dict):
-            self.assertIn("order_map", payload)
 
     def test_order_map_covers_measurable_low_and_high_orders(self) -> None:
         times = np.arange(0.0, 2.25, 0.25, dtype=np.float64)
@@ -104,6 +114,10 @@ class OrderTests(unittest.TestCase):
         self.assertLessEqual(float(high_rpm.order_map.orders[0]), 0.05)
         self.assertGreaterEqual(float(low_rpm.order_map.orders[-1]), 100.0)
         self.assertLessEqual(len(low_rpm.order_map.orders), 400)
+        self.assertAlmostEqual(
+            low_rpm.order_map.order_resolution,
+            float(low_rpm.order_map.orders[1] - low_rpm.order_map.orders[0]),
+        )
 
 
 if __name__ == "__main__":

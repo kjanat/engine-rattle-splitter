@@ -53,9 +53,16 @@ def probe_video(path: Path) -> VideoMetadata:
         "stream=avg_frame_rate,r_frame_rate,time_base,duration,nb_frames",
         "-of",
         "default=noprint_wrappers=1",
+        "--",
         str(path),
     ]
-    output = subprocess.run(command, check=True, capture_output=True, text=True).stdout
+    output = subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout
     values = _parse_key_values(output)
     average_fps = _positive_fraction(values.get("avg_frame_rate"), "avg_frame_rate")
     nominal_fps = _positive_fraction(values.get("r_frame_rate"), "r_frame_rate")
@@ -210,14 +217,20 @@ def _positive_fraction(value: str | None, name: str) -> float:
 def _optional_positive_float(value: str | None) -> float | None:
     if value is None:
         return None
-    parsed = float(value)
+    try:
+        parsed = float(value)
+    except ValueError:
+        return None
     return parsed if math.isfinite(parsed) and parsed > 0.0 else None
 
 
 def _optional_positive_int(value: str | None) -> int | None:
     if value is None:
         return None
-    parsed = int(value)
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
     return parsed if parsed > 0 else None
 
 

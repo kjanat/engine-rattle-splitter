@@ -18,12 +18,12 @@ from engine_rattle_splitter.cli import (
 from engine_rattle_splitter.modulation import (
     InsufficientAudioError,
     _bin_edges,
-    _modulation_spectrogram,
-    _resample_envelope,
     _validate_video_fps,
     analyze,
+    modulation_spectrogram,
     order_ratio,
     render,
+    resample_envelope,
     video_observability,
 )
 
@@ -160,7 +160,7 @@ class ModulationTests(unittest.TestCase):
         tail_times = np.arange(40, dtype=np.float64) / 400.0
         envelope[-40:] = 1.0 + np.sin(2.0 * np.pi * 20.0 * tail_times)
 
-        spectrogram = _modulation_spectrogram(envelope)
+        spectrogram = modulation_spectrogram(envelope)
 
         self.assertEqual(len(spectrogram.times_s), 2)
         self.assertAlmostEqual(float(spectrogram.times_s[-1]), 1.1)
@@ -180,7 +180,7 @@ class ModulationTests(unittest.TestCase):
     def test_resampling_preserves_constant_envelope_edges(self) -> None:
         envelope = np.ones(201, dtype=np.float64)
 
-        resampled = _resample_envelope(envelope, sample_rate=201)
+        resampled = resample_envelope(envelope, sample_rate=201)
 
         self.assertEqual(len(resampled), 400)
         self.assertTrue(bool(np.allclose(resampled, 1.0, atol=0.001)))

@@ -10,6 +10,10 @@ reusable code is under `src/engine_rattle_splitter/`:
 - `filters.py`: complementary Butterworth crossover logic.
 - `pipeline.py`: high-level split orchestration.
 - `analysis.py` and `spectrogram.py`: diagnostic plot generation.
+- `fault_diagnostics.py`: subband, event, ridge, harmonic, and track evidence.
+- `orders.py`: fixed/trace RPM ingestion and modulation order maps.
+- `media.py` and `localization.py`: video timing, control comparison, reports,
+  and camera-target generation.
 - `site_builder.py`: renders `artifacts/site/index.html` from the files present
   in the generated site output directory.
 
@@ -26,8 +30,11 @@ site output go under `artifacts/` and should not be treated as source.
   features before and after a transition.
 - `uv run engine-rattle-splitter spectrogram [INPUT] -o artifacts/spectrogram.png`:
   render a diagnostic spectrogram.
+- `uv run engine-rattle-splitter modulation [INPUT] --json artifacts/report.json`:
+  build corroborated fault-localization plots and optional sidecars.
 - `uv run engine-rattle-splitter site`: reproduce the GitHub Pages build under
   `artifacts/site`.
+- `uv run python -m unittest discover -s tests -v`: run the synthetic test suite.
 - `uv run ruff check .`: run lint checks.
 - `uv run basedpyright`: run static type checking.
 - `uv build`: build the package artifacts.
@@ -44,11 +51,10 @@ short module docstrings that explain behavior. Keep CLI defaults centralized in
 
 ## Testing Guidelines
 
-There is no dedicated automated test suite yet. Before submitting changes, run
-`ruff`, `basedpyright`, and at least one CLI smoke test against the bundled
-`.m4a` input. When adding tests, place them under `tests/` as `test_*.py`,
-prefer small synthetic NumPy arrays for filter behavior, and avoid depending on
-committed generated audio.
+Before submitting changes, run `ruff`, `basedpyright`, the unittest suite, and
+at least one CLI smoke test against the bundled `.m4a` input. Place tests under
+`tests/` as `test_*.py`, prefer small synthetic NumPy arrays for filter behavior,
+and avoid depending on committed generated audio.
 
 ## Commit & Pull Request Guidelines
 

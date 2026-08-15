@@ -16,7 +16,7 @@ the defaults and lives under `recordings/`.
 uv run engine-rattle-splitter separate     [INPUT] [-o DIR] [--crossover HZ] [--order N]
 uv run engine-rattle-splitter analyze      [INPUT] [--split-at SECONDS] [-o OUT.png]
 uv run engine-rattle-splitter spectrogram  [INPUT] [-o OUT.png]
-uv run engine-rattle-splitter modulation   [INPUT] [--rpm RPM | --rpm-trace CSV] [--video VIDEO] [--capture-fps FPS] [--json PATH] [--camera-target CSV] [-o OUT.png]
+uv run engine-rattle-splitter modulation   [INPUT] [--rpm RPM | --rpm-trace CSV] [--orders LIST] [--control AUDIO] [--video VIDEO] [--capture-fps FPS] [--video-start-offset SECONDS] [--json PATH] [--camera-target CSV] [-o OUT.png]
 ```
 
 Run any subcommand with `--help` for full option descriptions.
@@ -55,7 +55,8 @@ bundled file and likely need adjusting for other recordings:
 the high-band rattle signal. The plot and terminal report combine:
 
 - a time-resolved 5-100 Hz modulation map and global Welch spectrum;
-- independent 1.8-4, 4-8, 8-12, and 12-16 kHz carrier-subband envelopes;
+- guarded linear-phase FIR carrier subbands above `--crossover`, split at
+  internal 4, 8, and 12 kHz boundaries and limited by sample-rate Nyquist;
 - cross-subband coherence and a median consensus map;
 - transient event times, widths, cadence, and phase locking;
 - frequency ridge tracks and harmonic-family grouping;
@@ -63,10 +64,13 @@ the high-band rattle signal. The plot and terminal report combine:
   timeline/capture guidance.
 
 Broadband envelope peaks can arise from repeated impacts, changing load, or
-beating between stationary tones. The `limited`, `moderate`, and `strong`
-labels rank corroboration across these signal views. Their 0-1 scores are not
-calibrated probabilities, do not establish causality, and do not identify the
-2-16 kHz acoustic resonance as a physical motion frequency.
+beating between stationary tones. Frequency tracks are discovered from the
+local time-frequency map and never require a global Welch peak. Track labels
+are `limited` without persistent support from at least two carrier subbands,
+`moderate` with that support, and `strong` only when dynamic event timing also
+matches the ridge. Their 0-1 audio-evidence scores are uncalibrated rankings,
+not causal probabilities. Optional RPM and control data produce a separate
+camera priority rather than changing the meaning of the audio score.
 
 When `--rpm` is supplied, each measured peak is also expressed as a fixed
 shaft-speed order: `order = frequency / (RPM / 60)`. Use it only for a
@@ -75,10 +79,13 @@ contain exactly `time_s,rpm`, with strictly increasing media-relative times and
 positive RPM values. The report then fits each frequency track against RPM and
 adds an RPM-normalized order map. `--orders 0.5,1,1.5,2,3,4` controls the
 reference curves. RPM changes interpretation, never measured frequencies.
+Only a varying RPM trace can corroborate a moving order; a fixed RPM is an
+annotation and does not promote diagnostic priority.
 
-Use `--control AUDIO` with a comparable rattle-free recording to report each
-candidate's active-minus-control modulation power. Matching operating speed,
-microphone position, gain, and duration makes this comparison meaningful.
+Use `--control AUDIO` with a comparable rattle-free recording to report
+track-local active-minus-control modulation power along each moving ridge.
+Matching operating speed, microphone position, gain, and duration makes this
+comparison meaningful.
 
 Without `--video` or `--capture-fps`, standalone `modulation` makes no frame-rate
 assumption. `--video VIDEO` reads average/nominal frame rate, time base,
@@ -92,16 +99,20 @@ authoritative physical-rate override. Frequencies at or below one quarter of
 that rate have at least four frames per cycle; frequencies below `FPS / 2` but
 above that boundary are marginal; frequencies at or above Nyquist are
 ambiguous in ordinary frame-to-frame video. Detection remains audio-derived.
+Without that override, container FPS remains playback metadata and camera
+sampling status is `unknown`; it never produces an alias verdict.
 
 Only `site` defaults to 119.88 fps for the bundled EOS R7 experiment; override
 it with `site --video-fps FPS` for another capture rate.
 
-`--json PATH` writes the complete evidence model, tracks, event measurements,
-order grid, video provenance/alignment, control deltas, and warnings as strict
-JSON. `--camera-target CSV` writes corroborated time/frequency intervals for
-motion magnification, including audio and aligned video times, minimum
-unaliased FPS, a conservative four-frames-per-cycle recommendation, and alias
-risk. The generated site publishes both files for the bundled recording.
+`--json PATH` writes schema version 2 with global peaks, track-owned signal
+evidence, diagnostic priority, event measurements, compact order summaries,
+video provenance/alignment, track-local control contrasts, and warnings as
+strict JSON. `--camera-target CSV` writes candidate/corroborated track windows
+using the full spectrogram analysis aperture, including audio and aligned video
+times, minimum unaliased FPS, a conservative four-frames-per-cycle
+recommendation, and alias risk when physical FPS is known. The generated site
+publishes both files for the bundled recording.
 
 ## Listen / look
 

@@ -9,12 +9,18 @@ import numpy as np
 from engine_rattle_splitter.fault_diagnostics import (
     DetectedEvent,
     EventAnalysis,
+    EventPeriodicity,
+    FrequencyTrack,
+    RidgePoint,
+    _analyze_events,
     _carrier_bands,
     _event_width_samples,
+    _harmonic_families,
+    _track_event_support,
     analyze_fault_evidence,
 )
 from engine_rattle_splitter.localization import _events_json
-from engine_rattle_splitter.modulation import analyze
+from engine_rattle_splitter.modulation import ModulationPeak, analyze
 
 SAMPLE_RATE = 12_000
 DURATION_S = 12.0
@@ -50,7 +56,7 @@ class FaultDiagnosticsTests(unittest.TestCase):
         )
 
         candidate = min(
-            diagnostics.candidates,
+            diagnostics.global_peak_evidence,
             key=lambda item: abs(item.frequency_hz - 25.0),
         )
         self.assertGreaterEqual(candidate.supporting_subbands, 2)
@@ -59,6 +65,13 @@ class FaultDiagnosticsTests(unittest.TestCase):
         )
         self.assertTrue(diagnostics.harmonic_families)
         self.assertLessEqual(len(diagnostics.tracks), 12)
+        self.assertTrue(
+            any(evidence.label == "strong" for evidence in diagnostics.track_evidence)
+        )
+        self.assertIn(
+            "evidence scores are uncalibrated rankings, not causal probabilities",
+            diagnostics.warnings,
+        )
 
     def test_silence_produces_no_false_evidence(self) -> None:
         samples = np.zeros(SAMPLE_RATE * 2, dtype=np.float32)
@@ -71,9 +84,17 @@ class FaultDiagnosticsTests(unittest.TestCase):
             crossover_hz=1800.0,
         )
 
-        self.assertEqual(diagnostics.candidates, ())
+        self.assertEqual(diagnostics.global_peak_evidence, ())
         self.assertEqual(diagnostics.tracks, ())
         self.assertEqual(diagnostics.events.events, ())
+        self.assertIn(
+            "fewer than two carrier subbands contain useful energy",
+            diagnostics.warnings,
+        )
+        self.assertIn(
+            "no robust high-band burst events were detected",
+            diagnostics.warnings,
+        )
 
     def test_stationary_tone_beating_has_limited_evidence(self) -> None:
         times = (
@@ -93,7 +114,7 @@ class FaultDiagnosticsTests(unittest.TestCase):
                     crossover_hz=1800.0,
                 )
                 candidate = min(
-                    diagnostics.candidates,
+                    diagnostics.global_peak_evidence,
                     key=lambda item: abs(item.frequency_hz - 25.0),
                 )
                 self.assertEqual(candidate.label, "limited")
@@ -106,6 +127,99 @@ class FaultDiagnosticsTests(unittest.TestCase):
                 self.assertTrue(
                     all(left.high_hz <= right.low_hz for left, right in pairwise(bands))
                 )
+
+    def test_single_impulse_does_not_create_periodic_events(self) -> None:
+        samples = np.zeros(round(SAMPLE_RATE * DURATION_S), dtype=np.float32)
+        samples[round(6.0 * SAMPLE_RATE)] = 1.0
+        base = analyze(samples, SAMPLE_RATE)
+
+        diagnostics = analyze_fault_evidence(
+            samples, SAMPLE_RATE, base, crossover_hz=1800.0
+        )
+
+        self.assertEqual(diagnostics.events.periodicities, ())
+        self.assertFalse(
+            any(
+                evidence.events is not None and evidence.events.periodic
+                for evidence in diagnostics.track_evidence
+            )
+        )
+
+    def test_harmonics_infer_missing_fundamental(self) -> None:
+        peaks = tuple(
+            ModulationPeak(frequency_hz=frequency, level_db=0.0, prominence_db=20.0)
+            for frequency in (22.8, 34.2, 45.6)
+        )
+
+        families = _harmonic_families(peaks, resolution_hz=0.1)
+
+        self.assertTrue(families)
+        self.assertAlmostEqual(families[0].base_frequency_hz, 11.4, delta=0.2)
+        self.assertEqual(
+            tuple(member.harmonic for member in families[0].members), (2, 3, 4)
+        )
+
+    def test_event_corroboration_supports_100_hz_limit(self) -> None:
+        track_times = np.arange(0.0, 1.26, 0.25)
+        track = FrequencyTrack(
+            track_id=1,
+            points=tuple(
+                RidgePoint(time_s=float(time_s), frequency_hz=100.0, level_db=0.0)
+                for time_s in track_times.tolist()
+            ),
+            duration_s=1.25,
+            median_frequency_hz=100.0,
+            minimum_frequency_hz=100.0,
+            maximum_frequency_hz=100.0,
+            slope_hz_per_s=0.0,
+        )
+        events = EventAnalysis(
+            events=tuple(
+                DetectedEvent(time_s=float(time_s), strength_z=8.0, width_ms=2.5)
+                for time_s in np.arange(0.0, 1.251, 0.01).tolist()
+            ),
+            periodicities=(
+                EventPeriodicity(
+                    frequency_hz=100.0,
+                    prominence_db=20.0,
+                    autocorrelation=0.9,
+                ),
+            ),
+            median_width_ms=2.5,
+            interval_cv=0.0,
+        )
+
+        support = _track_event_support(track, events)
+        subharmonic_track = FrequencyTrack(
+            track_id=2,
+            points=tuple(
+                RidgePoint(time_s=float(time_s), frequency_hz=25.0, level_db=0.0)
+                for time_s in track_times.tolist()
+            ),
+            duration_s=1.25,
+            median_frequency_hz=25.0,
+            minimum_frequency_hz=25.0,
+            maximum_frequency_hz=25.0,
+            slope_hz_per_s=0.0,
+        )
+        subharmonic_support = _track_event_support(subharmonic_track, events)
+
+        self.assertIsNotNone(support)
+        if support is not None:
+            self.assertTrue(support.periodic)
+        self.assertIsNotNone(subharmonic_support)
+        if subharmonic_support is not None:
+            self.assertFalse(subharmonic_support.periodic)
+
+    def test_event_detection_preserves_near_limit_train(self) -> None:
+        rng = np.random.default_rng(13)
+        envelope = 1.0 + 0.001 * rng.normal(size=1_200)
+        starts = np.arange(20, 1_180, 4)
+        envelope[starts] += 1.0
+
+        events = _analyze_events(envelope.astype(np.float64))
+
+        self.assertEqual(len(events.events), len(starts))
 
     def test_event_width_tracks_envelope_decay(self) -> None:
         short = np.zeros(400, dtype=np.float64)

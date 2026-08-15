@@ -21,6 +21,7 @@ class SiteBuilderTests(unittest.TestCase):
         self.assertIn("configured video sampling limits", rendered)
         self.assertIn("Download machine-readable evidence", rendered)
         self.assertIn("Download camera targets", rendered)
+        self.assertNotIn("<h2>Downloads</h2>", rendered)
         self.assertNotIn("13 s mark", rendered)
 
     def test_sidecars_remain_downloadable_without_plot(self) -> None:

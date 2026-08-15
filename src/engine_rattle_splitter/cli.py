@@ -23,6 +23,7 @@ from engine_rattle_splitter import (
     localization,
     modulation,
     moments,
+    orders,
     pipeline,
     site_builder,
     spectrogram,
@@ -39,6 +40,7 @@ DEFAULT_SPECTROGRAM_PNG = Path("artifacts/spectrogram.png")
 DEFAULT_MODULATION_PNG = Path("artifacts/modulation.png")
 DEFAULT_FAULT_REPORT_JSON = "fault-report.json"
 DEFAULT_CAMERA_TARGETS_CSV = "camera-targets.csv"
+DEFAULT_REFERENCE_ORDERS = orders.DEFAULT_REFERENCE_ORDERS
 DEFAULT_VIDEO_FPS = 119.88
 DEFAULT_SITE_DIR = Path("artifacts/site")
 DEFAULT_RECORDINGS_DIR = Path("recordings")
@@ -59,7 +61,7 @@ class Args(argparse.Namespace):
     split_at: float = DEFAULT_SPLIT_AT
     rpm: float | None = None
     rpm_trace: Path | None = None
-    orders: tuple[float, ...] = (0.5, 1.0, 1.5, 2.0, 3.0, 4.0)
+    orders: tuple[float, ...] = DEFAULT_REFERENCE_ORDERS
     video_fps: float | None = None
     video: Path | None = None
     video_start_offset: float | None = None
@@ -576,9 +578,9 @@ def build_parser() -> argparse.ArgumentParser:
     _ = mod.add_argument(
         "--orders",
         type=_order_list,
-        default=(0.5, 1.0, 1.5, 2.0, 3.0, 4.0),
+        default=DEFAULT_REFERENCE_ORDERS,
         metavar="LIST",
-        help="comma-separated order references (default: %(default)s)",
+        help="comma-separated order references (default: 0.5,1,1.5,2,3,4)",
     )
     _ = mod.add_argument(
         "--capture-fps",

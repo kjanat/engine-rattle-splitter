@@ -36,6 +36,28 @@ class MediaTests(unittest.TestCase):
         if override is not None:
             self.assertEqual(override.provenance, "physical override")
             self.assertEqual(override.fps, 119.88)
+        assumed = resolve_capture_rate(metadata, None)
+        self.assertIsNotNone(assumed)
+        if assumed is not None:
+            self.assertEqual(assumed.provenance, "container assumption")
+            self.assertIsNotNone(assumed.warning)
+
+    def test_ignores_unparsable_optional_video_metadata(self) -> None:
+        output = (
+            "avg_frame_rate=30/1\n"
+            "r_frame_rate=30/1\n"
+            "time_base=1/90000\n"
+            "duration=unknown\n"
+            "nb_frames=unknown\n"
+        )
+        with patch(
+            "engine_rattle_splitter.media.subprocess.run",
+            return_value=SimpleNamespace(stdout=output),
+        ):
+            metadata = probe_video(Path("bike.mp4"))
+
+        self.assertIsNone(metadata.duration_s)
+        self.assertIsNone(metadata.frame_count)
 
     def test_audio_alignment_uses_documented_offset_sign(self) -> None:
         rng = np.random.default_rng(7)
@@ -81,6 +103,15 @@ class MediaTests(unittest.TestCase):
         alignment = align_audio_tracks(source, video, sample_rate=1_000)
 
         self.assertAlmostEqual(alignment.offset_s, 0.2, places=3)
+
+    def test_audio_alignment_resamples_production_rate(self) -> None:
+        rng = np.random.default_rng(12)
+        source = rng.normal(size=96_000).astype(np.float32)
+        video = np.concatenate((np.zeros(4_800, dtype=np.float32), source))
+
+        alignment = align_audio_tracks(source, video, sample_rate=48_000)
+
+        self.assertAlmostEqual(alignment.offset_s, 0.1, places=3)
 
 
 if __name__ == "__main__":

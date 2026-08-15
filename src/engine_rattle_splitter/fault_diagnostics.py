@@ -2,6 +2,7 @@
 
 import math
 from dataclasses import dataclass
+from functools import reduce
 from itertools import combinations, pairwise
 from typing import Literal
 
@@ -11,7 +12,10 @@ from scipy.signal import (
     butter,
     coherence,
     find_peaks,
+    firwin,
     hilbert,
+    kaiserord,
+    oaconvolve,
     sosfiltfilt,
 )
 
@@ -26,14 +30,18 @@ from .modulation import (
     ModulationPeak,
     ModulationResult,
     ModulationSpectrogram,
-    _detect_peaks,
-    _modulation_spectrogram,
-    _resample_envelope,
-    _spectrum,
+    detect_peaks,
+    modulation_spectrogram,
+    resample_envelope,
+    spectrum,
 )
 
 type Float64Array = NDArray[np.float64]
 type EvidenceLabel = Literal["limited", "moderate", "strong"]
+
+SUBBAND_GUARD_HZ = 100.0
+SUBBAND_TRANSITION_HZ = 100.0
+SUBBAND_ATTENUATION_DB = 60.0
 
 
 @dataclass(frozen=True)
@@ -52,6 +60,7 @@ class SubbandAnalysis:
     frequencies_hz: Float64Array
     spectrum_db: Float64Array
     peaks: tuple[ModulationPeak, ...]
+    spectrogram: ModulationSpectrogram
 
 
 @dataclass(frozen=True)
@@ -107,15 +116,40 @@ class HarmonicFamily:
 
 
 @dataclass(frozen=True)
-class CandidateEvidence:
+class GlobalPeakEvidence:
     frequency_hz: float
     prominence_db: float
     informative_subbands: int
     supporting_subbands: int
     median_subband_coherence: float | None
-    longest_track_s: float
     event_phase_locking: float | None
     event_rate_match: bool
+    score: float
+    label: EvidenceLabel
+
+
+@dataclass(frozen=True)
+class SubbandTrackSupport:
+    band: FrequencyBand
+    persistence: float
+    median_contrast_db: float
+
+
+@dataclass(frozen=True)
+class TrackEventSupport:
+    event_count: int
+    phase_locking: float
+    one_cycle_interval_fraction: float
+    periodic: bool
+
+
+@dataclass(frozen=True)
+class TrackEvidence:
+    track_id: int
+    frame_coverage: float
+    subbands: tuple[SubbandTrackSupport, ...]
+    supporting_subbands: int
+    events: TrackEventSupport | None
     score: float
     label: EvidenceLabel
 
@@ -125,9 +159,10 @@ class FaultDiagnostics:
     subbands: tuple[SubbandAnalysis, ...]
     consensus_spectrogram: ModulationSpectrogram | None
     tracks: tuple[FrequencyTrack, ...]
+    track_evidence: tuple[TrackEvidence, ...]
     events: EventAnalysis
     harmonic_families: tuple[HarmonicFamily, ...]
-    candidates: tuple[CandidateEvidence, ...]
+    global_peak_evidence: tuple[GlobalPeakEvidence, ...]
     warnings: tuple[str, ...]
 
 
@@ -159,15 +194,13 @@ def analyze_fault_evidence(
     informative = tuple(subband for subband in subbands if subband.informative)
     consensus = _consensus_spectrogram(informative)
     track_source = consensus if consensus is not None else base.spectrogram
-    tracks = _extract_tracks(
-        track_source, tuple(peak.frequency_hz for peak in base.peaks)
-    )
+    tracks = _extract_tracks(track_source)
     events = _analyze_events(base.envelope)
+    track_evidence = _track_evidence(tracks, informative, events, track_source)
     coherence_by_frequency = _candidate_coherence(informative, base.peaks)
-    candidates = _candidate_evidence(
+    global_peak_evidence = _global_peak_evidence(
         base.peaks,
         informative,
-        tracks,
         events,
         coherence_by_frequency,
         base.frequency_resolution_hz,
@@ -184,9 +217,10 @@ def analyze_fault_evidence(
         subbands=subbands,
         consensus_spectrogram=consensus,
         tracks=tracks,
+        track_evidence=track_evidence,
         events=events,
         harmonic_families=_harmonic_families(base.peaks, base.frequency_resolution_hz),
-        candidates=candidates,
+        global_peak_evidence=global_peak_evidence,
         warnings=tuple(warnings),
     )
 
@@ -200,7 +234,11 @@ def _carrier_bands(sample_rate: int, crossover_hz: float) -> tuple[FrequencyBand
     )
     boundaries = (crossover_hz, *internal_boundaries, upper_limit)
     bands: list[FrequencyBand] = []
-    for low_hz, high_hz in pairwise(boundaries):
+    for index, (nominal_low_hz, nominal_high_hz) in enumerate(pairwise(boundaries)):
+        low_hz = nominal_low_hz + (SUBBAND_GUARD_HZ if index > 0 else 0.0)
+        high_hz = nominal_high_hz - (
+            SUBBAND_GUARD_HZ if index < len(boundaries) - 2 else 0.0
+        )
         if high_hz - low_hz < 500.0:
             continue
         bands.append(
@@ -213,6 +251,22 @@ def _carrier_bands(sample_rate: int, crossover_hz: float) -> tuple[FrequencyBand
     return tuple(bands)
 
 
+def _fir_bandpass(
+    padded: Float32Array, sample_rate: int, band: FrequencyBand
+) -> Float32Array:
+    normalized_transition = SUBBAND_TRANSITION_HZ / (sample_rate / 2.0)
+    tap_count, beta = kaiserord(SUBBAND_ATTENUATION_DB, normalized_transition)
+    tap_count = max(31, tap_count | 1)
+    taps = firwin(
+        tap_count,
+        (band.low_hz, band.high_hz),
+        pass_zero=False,
+        fs=sample_rate,
+        window=("kaiser", beta),
+    )
+    return oaconvolve(padded.astype(np.float64), taps, mode="same").astype(np.float32)
+
+
 def _analyze_subbands(
     padded: Float32Array,
     sample_rate: int,
@@ -223,8 +277,6 @@ def _analyze_subbands(
     analyses: list[SubbandAnalysis] = []
     informative_floor = broad_rms * 10.0 ** (-30.0 / 20.0)
     broad_has_energy = broad_rms > np.finfo(np.float64).tiny
-    carrier_frequencies = np.fft.rfftfreq(len(padded), d=1.0 / sample_rate)
-    carrier_spectrum = np.fft.rfft(padded.astype(np.float64))
     envelope_sos = butter(
         DEFAULT_FILTER_ORDER,
         ENVELOPE_CUTOFF_HZ,
@@ -233,21 +285,17 @@ def _analyze_subbands(
         output="sos",
     )
     for band in _carrier_bands(sample_rate, crossover_hz):
-        carrier_mask = (carrier_frequencies >= band.low_hz) & (
-            carrier_frequencies < band.high_hz
-        )
-        carrier = np.fft.irfft(
-            np.where(carrier_mask, carrier_spectrum, 0.0), n=len(padded)
-        ).astype(np.float32)
+        carrier = _fir_bandpass(padded, sample_rate, band)
         carrier_rms = _rms(carrier[pad_samples:-pad_samples])
         analytic = np.abs(hilbert(carrier)).astype(np.float64)
         smoothed = sosfiltfilt(envelope_sos, analytic).astype(np.float64)
         envelope = np.maximum(smoothed[pad_samples:-pad_samples], 0.0).astype(
             np.float64
         )
-        envelope = np.maximum(_resample_envelope(envelope, sample_rate), 0.0)
-        frequencies, spectrum_db, resolution = _spectrum(envelope)
-        peaks = _detect_peaks(frequencies, spectrum_db, resolution)
+        envelope = np.maximum(resample_envelope(envelope, sample_rate), 0.0)
+        frequencies, spectrum_db, resolution = spectrum(envelope)
+        peaks = detect_peaks(frequencies, spectrum_db, resolution)
+        spectrogram = modulation_spectrogram(envelope)
         band_mask = (frequencies >= MIN_MODULATION_HZ) & (
             frequencies <= MAX_MODULATION_HZ
         )
@@ -260,6 +308,7 @@ def _analyze_subbands(
                 frequencies_hz=frequencies[band_mask].astype(np.float64),
                 spectrum_db=spectrum_db[band_mask].astype(np.float64),
                 peaks=peaks,
+                spectrogram=spectrogram,
             )
         )
     return tuple(analyses)
@@ -275,13 +324,10 @@ def _consensus_spectrogram(
         scale = max(float(np.median(subband.envelope)), np.finfo(np.float64).eps)
         normalized.append(np.log1p(subband.envelope / scale).astype(np.float64))
     consensus = np.median(np.stack(normalized), axis=0).astype(np.float64)
-    return _modulation_spectrogram(consensus)
+    return modulation_spectrogram(consensus)
 
 
-def _extract_tracks(
-    spectrogram: ModulationSpectrogram,
-    candidate_frequencies_hz: tuple[float, ...],
-) -> tuple[FrequencyTrack, ...]:
+def _extract_tracks(spectrogram: ModulationSpectrogram) -> tuple[FrequencyTrack, ...]:
     tracks: list[list[RidgePoint]] = []
     resolution = spectrogram.frequency_resolution_hz
     distance = max(1, math.ceil(1.0 / resolution))
@@ -292,15 +338,7 @@ def _extract_tracks(
         ranked = sorted(
             indices.tolist(), key=lambda index: float(column[index]), reverse=True
         )
-        selected = [
-            index
-            for rank, index in enumerate(ranked)
-            if rank < 3
-            or any(
-                abs(float(spectrogram.frequencies_hz[index]) - candidate_hz) <= 3.0
-                for candidate_hz in candidate_frequencies_hz
-            )
-        ][:8]
+        selected = ranked[:8]
         used_tracks: set[int] = set()
         for index in selected:
             frequency_hz = float(spectrogram.frequencies_hz[index])
@@ -313,7 +351,15 @@ def _extract_tracks(
                 if elapsed <= 0.0 or elapsed > 0.51:
                     continue
                 allowed = max(2.0 * resolution, 20.0 * elapsed)
-                delta = abs(frequency_hz - points[-1].frequency_hz)
+                predicted_hz = points[-1].frequency_hz
+                if len(points) >= 2:
+                    previous_elapsed = points[-1].time_s - points[-2].time_s
+                    if previous_elapsed > 0.0:
+                        previous_slope = (
+                            points[-1].frequency_hz - points[-2].frequency_hz
+                        ) / previous_elapsed
+                        predicted_hz += previous_slope * elapsed
+                delta = abs(frequency_hz - predicted_hz)
                 if delta <= allowed and delta < best_delta:
                     best_track = track_index
                     best_delta = delta
@@ -340,11 +386,7 @@ def _extract_tracks(
         )
         median_frequency_hz = float(np.median(frequencies))
         median_level_db = float(np.median([point.level_db for point in points]))
-        near_candidate = any(
-            abs(median_frequency_hz - candidate_hz) <= 3.0
-            for candidate_hz in candidate_frequencies_hz
-        )
-        if not near_candidate and median_level_db < -15.0:
+        if median_level_db < -25.0:
             continue
         retained.append((
             duration_s * max(1.0, 30.0 + median_level_db),
@@ -373,6 +415,129 @@ def _extract_tracks(
     )
 
 
+def _track_evidence(
+    tracks: tuple[FrequencyTrack, ...],
+    informative: tuple[SubbandAnalysis, ...],
+    events: EventAnalysis,
+    spectrogram: ModulationSpectrogram,
+) -> tuple[TrackEvidence, ...]:
+    evidence: list[TrackEvidence] = []
+    for track in tracks:
+        expected_frames = max(
+            1, round(track.duration_s / spectrogram.hop_duration_s) + 1
+        )
+        frame_coverage = min(1.0, len(track.points) / expected_frames)
+        supports = tuple(
+            _subband_track_support(track, subband) for subband in informative
+        )
+        supporting_subbands = sum(support.persistence >= 0.6 for support in supports)
+        event_support = _track_event_support(track, events)
+        persistence = sorted(
+            (support.persistence for support in supports), reverse=True
+        )
+        top_two = (persistence + [0.0, 0.0])[:2]
+        cross_support = frame_coverage * sum(top_two) / 2.0
+        event_score = (
+            event_support.phase_locking * event_support.one_cycle_interval_fraction
+            if event_support is not None
+            else 0.0
+        )
+        score = 0.8 * cross_support + 0.2 * event_score
+        if frame_coverage < 0.7 or supporting_subbands < 2:
+            label: EvidenceLabel = "limited"
+        elif event_support is not None and event_support.periodic:
+            label = "strong"
+        else:
+            label = "moderate"
+        evidence.append(
+            TrackEvidence(
+                track_id=track.track_id,
+                frame_coverage=frame_coverage,
+                subbands=supports,
+                supporting_subbands=supporting_subbands,
+                events=event_support,
+                score=score,
+                label=label,
+            )
+        )
+    return tuple(evidence)
+
+
+def _subband_track_support(
+    track: FrequencyTrack, subband: SubbandAnalysis
+) -> SubbandTrackSupport:
+    levels: list[float] = []
+    contrasts: list[float] = []
+    resolution = subband.spectrogram.frequency_resolution_hz
+    half_width_hz = max(1.0, 2.0 * resolution)
+    for point in track.points:
+        time_index = int(np.argmin(np.abs(subband.spectrogram.times_s - point.time_s)))
+        frequency_mask = (
+            np.abs(subband.spectrogram.frequencies_hz - point.frequency_hz)
+            <= half_width_hz
+        )
+        column = subband.spectrogram.psd_db[:, time_index]
+        level = float(np.max(column[frequency_mask]))
+        levels.append(level)
+        contrasts.append(level - float(np.median(column)))
+    supported = [
+        level >= -25.0 and contrast >= 6.0
+        for level, contrast in zip(levels, contrasts, strict=True)
+    ]
+    return SubbandTrackSupport(
+        band=subband.band,
+        persistence=float(np.mean(supported)),
+        median_contrast_db=float(np.median(contrasts)),
+    )
+
+
+def _track_event_support(
+    track: FrequencyTrack, events: EventAnalysis
+) -> TrackEventSupport | None:
+    times = np.array([point.time_s for point in track.points], dtype=np.float64)
+    frequencies = np.array(
+        [point.frequency_hz for point in track.points], dtype=np.float64
+    )
+    event_times = np.array(
+        [
+            event.time_s
+            for event in events.events
+            if times[0] <= event.time_s <= times[-1]
+        ],
+        dtype=np.float64,
+    )
+    if len(event_times) < 5 or event_times[-1] - event_times[0] < 1.0:
+        return None
+    phase_increments = (
+        2.0 * np.pi * 0.5 * (frequencies[:-1] + frequencies[1:]) * np.diff(times)
+    )
+    phases = np.concatenate((
+        np.array([0.0], dtype=np.float64),
+        np.cumsum(phase_increments),
+    ))
+    event_phases = np.interp(event_times, times, phases)
+    phase_locking = float(abs(np.mean(np.exp(1j * event_phases))))
+    cycles = np.diff(event_phases) / (2.0 * np.pi)
+    one_cycle_fraction = float(np.mean(np.abs(cycles - 1.0) <= 0.2))
+    stationary_tolerance_hz = max(1.0, 0.05 * track.median_frequency_hz)
+    periodicity_match = (
+        track.maximum_frequency_hz - track.minimum_frequency_hz
+        <= stationary_tolerance_hz
+        and any(
+            abs(periodicity.frequency_hz - track.median_frequency_hz)
+            <= stationary_tolerance_hz
+            for periodicity in events.periodicities
+        )
+    )
+    return TrackEventSupport(
+        event_count=len(event_phases),
+        phase_locking=phase_locking,
+        one_cycle_interval_fraction=one_cycle_fraction,
+        periodic=(phase_locking >= 0.6 and one_cycle_fraction >= 0.6)
+        or periodicity_match,
+    )
+
+
 def _analyze_events(envelope: Float64Array) -> EventAnalysis:
     scale = max(float(np.median(envelope)), np.finfo(np.float64).eps)
     log_envelope = np.log1p(envelope / scale)
@@ -393,7 +558,7 @@ def _analyze_events(envelope: Float64Array) -> EventAnalysis:
         z_score,
         height=4.0,
         prominence=2.0,
-        distance=max(1, round(0.01 * ENVELOPE_SAMPLE_RATE)),
+        distance=max(1, round(ENVELOPE_SAMPLE_RATE / MAX_MODULATION_HZ)),
     )
     if len(indices) == 0:
         return EventAnalysis(
@@ -419,11 +584,18 @@ def _analyze_events(envelope: Float64Array) -> EventAnalysis:
         for index, width in zip(indices.tolist(), width_samples.tolist(), strict=True)
     )
     periodicities: tuple[EventPeriodicity, ...] = ()
-    if len(events) >= 5:
+    event_span_s = events[-1].time_s - events[0].time_s
+    if len(events) >= 5 and event_span_s >= 1.0:
         impulse_train = np.zeros_like(envelope)
-        impulse_train[indices] = z_score[indices]
-        frequencies, spectrum_db, resolution = _spectrum(impulse_train)
-        peaks = _detect_peaks(frequencies, spectrum_db, resolution)
+        event_indices = np.array(
+            [round(event.time_s * ENVELOPE_SAMPLE_RATE) for event in events],
+            dtype=np.int64,
+        )
+        impulse_train[event_indices] = np.array(
+            [event.strength_z for event in events], dtype=np.float64
+        )
+        frequencies, spectrum_db, resolution = spectrum(impulse_train)
+        peaks = detect_peaks(frequencies, spectrum_db, resolution)
         periodicities = tuple(
             EventPeriodicity(
                 frequency_hz=peak.frequency_hz,
@@ -461,7 +633,9 @@ def _candidate_coherence(
         )
         for peak in peaks:
             index = int(np.argmin(np.abs(frequencies - peak.frequency_hz)))
-            values[peak.frequency_hz].append(float(coherence_values[index]))
+            candidate_value = float(coherence_values[index])
+            if math.isfinite(candidate_value):
+                values[peak.frequency_hz].append(candidate_value)
     return {
         frequency_hz: float(np.median(candidate_values))
         for frequency_hz, candidate_values in values.items()
@@ -469,15 +643,14 @@ def _candidate_coherence(
     }
 
 
-def _candidate_evidence(
+def _global_peak_evidence(
     peaks: tuple[ModulationPeak, ...],
     informative: tuple[SubbandAnalysis, ...],
-    tracks: tuple[FrequencyTrack, ...],
     events: EventAnalysis,
     coherence_by_frequency: dict[float, float],
     resolution_hz: float,
-) -> tuple[CandidateEvidence, ...]:
-    evidence: list[CandidateEvidence] = []
+) -> tuple[GlobalPeakEvidence, ...]:
+    evidence: list[GlobalPeakEvidence] = []
     event_times = np.array([event.time_s for event in events.events], dtype=np.float64)
     event_weights = np.array(
         [event.strength_z for event in events.events], dtype=np.float64
@@ -491,53 +664,33 @@ def _candidate_evidence(
             )
             for subband in informative
         )
-        longest_track = max(
-            (
-                track.duration_s
-                for track in tracks
-                if track.minimum_frequency_hz - 2.0
-                <= peak.frequency_hz
-                <= track.maximum_frequency_hz + 2.0
-            ),
-            default=0.0,
-        )
         phase_locking = _phase_locking(event_times, event_weights, peak.frequency_hz)
         event_rate_match = any(
             abs(periodicity.frequency_hz - peak.frequency_hz) <= tolerance_hz
             for periodicity in events.periodicities
         )
         coherence_value = coherence_by_frequency.get(peak.frequency_hz)
-        components: list[tuple[float, float]] = [
-            (0.30, min(1.0, peak.prominence_db / 30.0)),
-            (
-                0.20,
-                supporting / len(informative) if informative else 0.0,
-            ),
-            (0.15, min(1.0, longest_track / 3.0)),
-        ]
-        if coherence_value is not None:
-            components.append((0.15, coherence_value))
-        if phase_locking is not None:
-            components.append((0.20, phase_locking))
-        weight_sum = sum(weight for weight, _ in components)
-        score = sum(weight * value for weight, value in components) / weight_sum
-        independent_support = supporting >= 2 or event_rate_match
-        if not independent_support:
+        score = (
+            0.35 * min(1.0, peak.prominence_db / 30.0)
+            + 0.25 * (supporting / len(informative) if informative else 0.0)
+            + 0.15 * (coherence_value if coherence_value is not None else 0.0)
+            + 0.25 * (phase_locking if phase_locking is not None else 0.0)
+        )
+        if supporting < 2:
             label: EvidenceLabel = "limited"
-        elif score >= 0.70:
+        elif event_rate_match and score >= 0.70:
             label = "strong"
         elif score >= 0.45:
             label = "moderate"
         else:
             label = "limited"
         evidence.append(
-            CandidateEvidence(
+            GlobalPeakEvidence(
                 frequency_hz=peak.frequency_hz,
                 prominence_db=peak.prominence_db,
                 informative_subbands=len(informative),
                 supporting_subbands=supporting,
                 median_subband_coherence=coherence_value,
-                longest_track_s=longest_track,
                 event_phase_locking=phase_locking,
                 event_rate_match=event_rate_match,
                 score=score,
@@ -550,31 +703,66 @@ def _candidate_evidence(
 def _harmonic_families(
     peaks: tuple[ModulationPeak, ...], resolution_hz: float
 ) -> tuple[HarmonicFamily, ...]:
+    proposals: list[tuple[float, HarmonicFamily]] = []
+    for anchor in peaks:
+        for anchor_harmonic in range(1, 9):
+            candidate_base_hz = anchor.frequency_hz / anchor_harmonic
+            members: list[HarmonicMember] = []
+            residual = 0.0
+            for peak in peaks:
+                harmonic = round(peak.frequency_hz / candidate_base_hz)
+                if not 1 <= harmonic <= 8:
+                    continue
+                expected_hz = harmonic * candidate_base_hz
+                tolerance_hz = max(2.0 * resolution_hz, 0.03 * peak.frequency_hz)
+                error_hz = abs(peak.frequency_hz - expected_hz)
+                if error_hz <= tolerance_hz:
+                    members.append(
+                        HarmonicMember(
+                            frequency_hz=peak.frequency_hz, harmonic=harmonic
+                        )
+                    )
+                    residual += error_hz
+            if len(members) < 2:
+                continue
+            divisor = reduce(math.gcd, (member.harmonic for member in members))
+            normalized_members = tuple(
+                HarmonicMember(
+                    frequency_hz=member.frequency_hz,
+                    harmonic=member.harmonic // divisor,
+                )
+                for member in members
+            )
+            refined_base_hz = float(
+                np.median([
+                    member.frequency_hz / member.harmonic
+                    for member in normalized_members
+                ])
+            )
+            proposals.append((
+                residual,
+                HarmonicFamily(
+                    base_frequency_hz=refined_base_hz,
+                    members=normalized_members,
+                ),
+            ))
+
     families: list[HarmonicFamily] = []
     used: set[float] = set()
-    for base_peak in sorted(peaks, key=lambda peak: peak.frequency_hz):
-        if base_peak.frequency_hz in used:
+    ranked = sorted(
+        proposals,
+        key=lambda item: (
+            -len(item[1].members),
+            max(member.harmonic for member in item[1].members),
+            item[0],
+        ),
+    )
+    for _, family in ranked:
+        frequencies = {member.frequency_hz for member in family.members}
+        if frequencies.intersection(used):
             continue
-        members: list[HarmonicMember] = []
-        for peak in peaks:
-            harmonic = round(peak.frequency_hz / base_peak.frequency_hz)
-            if not 1 <= harmonic <= 8:
-                continue
-            expected = harmonic * base_peak.frequency_hz
-            tolerance = max(2.0 * resolution_hz, 0.03 * peak.frequency_hz)
-            if abs(peak.frequency_hz - expected) <= tolerance:
-                members.append(
-                    HarmonicMember(frequency_hz=peak.frequency_hz, harmonic=harmonic)
-                )
-        if len(members) < 2:
-            continue
-        families.append(
-            HarmonicFamily(
-                base_frequency_hz=base_peak.frequency_hz,
-                members=tuple(members),
-            )
-        )
-        used.update(member.frequency_hz for member in members)
+        families.append(family)
+        used.update(frequencies)
     return tuple(families)
 
 

@@ -56,6 +56,7 @@ class OrderFit:
 class OrderMap:
     times_s: Float64Array
     orders: Float64Array
+    order_resolution: float
     psd_db: Float64Array
     valid: BoolArray
 
@@ -215,16 +216,17 @@ def _order_map(
     )
     minimum_order = min(
         float(spectrogram.frequencies_hz[0] * 60.0 / np.max(source_rpm)),
-        min(reference_orders),
+        *reference_orders,
     )
     maximum_order = max(
         float(spectrogram.frequencies_hz[-1] * 60.0 / np.min(source_rpm)),
-        max(reference_orders),
+        *reference_orders,
     )
     order_count = min(
         400, max(2, math.ceil((maximum_order - minimum_order) / 0.05) + 1)
     )
     orders = np.linspace(minimum_order, maximum_order, order_count, dtype=np.float64)
+    order_resolution = float(orders[1] - orders[0])
     rpm, valid_times = interpolate_rpm(spectrogram.times_s, speed)
     values = np.full(
         (len(orders), len(spectrogram.times_s)),
@@ -246,6 +248,7 @@ def _order_map(
     return OrderMap(
         times_s=spectrogram.times_s,
         orders=orders,
+        order_resolution=order_resolution,
         psd_db=values,
         valid=valid,
     )

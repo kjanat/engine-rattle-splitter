@@ -384,8 +384,9 @@ def _render_modulation_section(
             '      <p class="section-copy">The high-band amplitude envelope '
             "combines carrier-subband agreement, event timing, frequency "
             "tracks, harmonic families, and configured video sampling limits. "
-            "Evidence scores rank corroboration; they are not causal "
-            "probabilities.</p>"
+            "Track scores rank audio evidence; diagnostic priority separately "
+            "records event, RPM, and control corroboration. Neither is a causal "
+            "probability.</p>"
         ),
         _render_figure(artifact, "time-resolved rattle-envelope modulation"),
     ]
